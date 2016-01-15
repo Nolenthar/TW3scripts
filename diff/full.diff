@@ -1,0 +1,3745 @@
+diff -ur scripts_1_11_decommented/engine/telemetryKeyword.ws scripts_1_12_decommented/engine/telemetryKeyword.ws
+--- scripts_1_11_decommented/engine/telemetryKeyword.ws	2016-01-12 11:21:10.795743607 +0400
++++ scripts_1_12_decommented/engine/telemetryKeyword.ws	2016-01-12 11:21:26.743589748 +0400
+@@ -1,6 +1,6 @@
+ import class CR4TelemetryScriptProxy extends CObject
+ {
+-	import final function Log( eventType : ER4TelemetryEvents );
++	import final function LogWithName( eventType : ER4TelemetryEvents );
+ 	import final function LogWithLabel( eventType : ER4TelemetryEvents, label : String );
+ 	import final function LogWithValue( eventType : ER4TelemetryEvents, value : int );
+ 	import final function LogWithValueStr( eventType : ER4TelemetryEvents, value : String );
+diff -ur scripts_1_11_decommented/game/actor.ws scripts_1_12_decommented/game/actor.ws
+--- scripts_1_11_decommented/game/actor.ws	2016-01-12 11:21:01.578897286 +0400
++++ scripts_1_12_decommented/game/actor.ws	2016-01-12 11:21:17.461695109 +0400
+@@ -4674,17 +4674,6 @@
+ 	{
+ 		return -1;
+ 	}
+-	public function GetAbilityCount(abilityName : name) : int
+-	{
+-		var i, cnt : int;
+-		var all : array<name>;
+-		all = GetAbilities(true);
+-		cnt = 0;
+-		for(i=0; i<all.Size(); i+=1)
+-			if(all[i] == abilityName)
+-				cnt += 1;
+-		return cnt;
+-	}
+ 	public function TestIsInSettlement() : bool
+ 	{
+ 		var ents : array<CEntity>;
+diff -ur scripts_1_11_decommented/game/behavior_tree/tasks/player/btPlayer.ws scripts_1_12_decommented/game/behavior_tree/tasks/player/btPlayer.ws
+--- scripts_1_11_decommented/game/behavior_tree/tasks/player/btPlayer.ws	2016-01-12 11:21:07.728465217 +0400
++++ scripts_1_12_decommented/game/behavior_tree/tasks/player/btPlayer.ws	2016-01-12 11:21:23.542211748 +0400
+@@ -58,8 +58,21 @@
+ 	}
+ 	function OnListenedGameplayEvent( eventName : name ) : bool
+ 	{
++		var item, itemL : SItemUniqueId;
++		var inv : CInventoryComponent;
+ 		if( eventName == 'StopPlayerActionOnInput' && completeOnInput )
+ 		{
++			inv = thePlayer.GetInventory();
++			item = inv.GetItemFromSlot( 'r_weapon' );
++			itemL = inv.GetItemFromSlot( 'l_weapon' );
++			if( item != GetInvalidUniqueId() )
++			{
++				inv.UnmountItem( item, true );
++			}
++			if( itemL != GetInvalidUniqueId() )
++			{
++				inv.UnmountItem( itemL, true );
++			}
+ 			Complete( true );
+ 			return true;
+ 		}
+diff -ur scripts_1_11_decommented/game/behavior_tree/tasks/rider/btBaseRidingManager.ws scripts_1_12_decommented/game/behavior_tree/tasks/rider/btBaseRidingManager.ws
+--- scripts_1_11_decommented/game/behavior_tree/tasks/rider/btBaseRidingManager.ws	2016-01-12 11:21:08.040697144 +0400
++++ scripts_1_12_decommented/game/behavior_tree/tasks/rider/btBaseRidingManager.ws	2016-01-12 11:21:23.866452596 +0400
+@@ -213,6 +213,12 @@
+ 				{
+ 					return;
+ 				}
++				else if( IsPositionValid( vehicleComponent, BackDismountPosition ) )
++				{
++					thePlayer.SetBehaviorVariable( 'dismountType',0.f );
++					dismountDirection = 4.0;
++					return;
++				}
+ 				else
+ 				{
+ 					thePlayer.SetBehaviorVariable('dismountType',0.f);
+diff -ur scripts_1_11_decommented/game/characterStats.ws scripts_1_12_decommented/game/characterStats.ws
+--- scripts_1_11_decommented/game/characterStats.ws	2016-01-12 11:21:07.168048936 +0400
++++ scripts_1_12_decommented/game/characterStats.ws	2016-01-12 11:21:22.966784318 +0400
+@@ -391,6 +391,24 @@
+ 			RemoveAbility(abilityName);
+ 		}
+ 	}
++	public function RemoveAbilityAll(abilityName : name)
++	{
++		while ( HasAbility(abilityName) )
++		{
++			RemoveAbility(abilityName);
++		}
++	}
++	public function GetAbilityCount(abilityName : name) : int
++	{
++		var i, cnt : int;
++		var all : array<name>;
++		GetAbilities(all, true);
++		cnt = 0;
++		for(i=0; i<all.Size(); i+=1)
++			if(all[i] == abilityName)
++				cnt += 1;
++		return cnt;
++	}
+ 	public function GetAbilitiesWithTag(tag : name) : array<name>
+ 	{
+ 		var abs,ret : array<name>;
+diff -ur scripts_1_11_decommented/game/components/inventoryComponent.ws scripts_1_12_decommented/game/components/inventoryComponent.ws
+--- scripts_1_11_decommented/game/components/inventoryComponent.ws	2016-01-12 11:20:59.303206891 +0400
++++ scripts_1_12_decommented/game/components/inventoryComponent.ws	2016-01-12 11:21:15.363136289 +0400
+@@ -136,6 +136,8 @@
+ 	import final function GetItemCount( optional useAssociatedInventory : bool  ) : int;
+ 	import final function GetItemsNames() : array< name >;
+ 	import final function GetAllItems( out items : array< SItemUniqueId > );
++	import public function GetItemId( itemName : name ) : SItemUniqueId;
++	import public function GetItemsIds( itemName : name ) : array< SItemUniqueId >;
+ 	import final function GetItemsByTag( tag : name ) : array< SItemUniqueId >;
+ 	import final function GetItemsByCategory( category : name ) : array< SItemUniqueId >;
+ 	import final function GetSchematicIngredients(itemName : SItemUniqueId, out quantity : array<int>, out names : array<name>);
+@@ -347,22 +349,6 @@
+ 				return true;
+ 		return false;
+ 	}
+-	public function GetItemsIds(itemName : name) : array<SItemUniqueId>
+-	{
+-		var allItems : array<SItemUniqueId>;
+-		var i : int;
+-		var localItemName : name;
+-		GetAllItems( allItems );
+-		for(i=allItems.Size()-1; i >= 0; i-=1)
+-		{
+-			localItemName = GetItemName(allItems[i]);
+-			if(localItemName != itemName || !IsIdValid( allItems[i]) )
+-			{
+-				allItems.EraseFast( i );
+-			}
+-		}
+-		return allItems;
+-	}
+ 	import final function GetItem( itemId : SItemUniqueId ) : SInventoryItem;
+ 	import final function GetItemName( itemId : SItemUniqueId ) : name;
+ 	import final function GetItemCategory( itemId : SItemUniqueId ) : name;
+@@ -1541,7 +1527,7 @@
+ 		var oilAbility   : name;
+ 		var isSteelSword : bool;
+ 		var itemCategory : name;
+-		var swordAbilities, oilAbs, items : array<name>;
++		var swordAbilities, oilAbs, items, items2 : array<name>;
+ 		if (!IsIdValid(sword))
+ 		{
+ 			return '';
+@@ -1576,6 +1562,11 @@
+ 			items = dm.GetItemsWithTag('SteelOil');
+ 		else
+ 			items = dm.GetItemsWithTag('SilverOil');
++		if( ( W3ReplacerCiri ) thePlayer )
++		{
++			items2 = dm.GetItemsWithTag( 'SilverOil' );
++			ArrayOfNamesAppend( items, items2 );
++		}
+ 		for(i=0; i<items.Size(); i+=1)
+ 		{
+ 			dm.GetItemAbilitiesWithWeights(items[i], GetEntity() == thePlayer, oilAbs, tempAF, tempI, tempI);
+@@ -1692,7 +1683,7 @@
+ 		}
+ 		else if(buffType == EET_MariborForest)
+ 		{
+-			attrs.Remove('focus');
++			attrs.Remove('focus_on_drink');
+ 		}
+ 		else if(buffType == EET_KillerWhale)
+ 		{
+@@ -2415,7 +2406,7 @@
+ 			}
+ 			itemSlot = GetSlotForItemId(itemId);
+ 			wplayer.GetItemEquippedOnSlot(itemSlot, equipedItem);
+-			if (!IsIdValid(equipedItem))
++			if (!wplayer.inv.IsIdValid(equipedItem))
+ 			{
+ 				return false;
+ 			}
+@@ -2656,13 +2647,15 @@
+ 	}
+ 	public function GetItemEncumbrance(item : SItemUniqueId) : float
+ 	{
++		var itemCategory : name;
+ 		if ( IsItemEncumbranceItem( item ) )
+ 		{
+-			if ( GetItemCategory( item ) == 'quest' || GetItemCategory( item ) == 'key' )
++			itemCategory = GetItemCategory( item );
++			if ( itemCategory == 'quest' || itemCategory == 'key' )
+ 			{
+ 				return 0.01 * GetItemQuantity( item );
+ 			}
+-			else if ( GetItemCategory( item ) == 'usable' || GetItemCategory( item ) == 'upgrade' || GetItemCategory( item ) == 'junk' )
++			else if ( itemCategory == 'usable' || itemCategory == 'upgrade' || itemCategory == 'junk' )
+ 			{
+ 				return 0.01 + GetItemWeight( item ) * GetItemQuantity( item ) * 0.2;
+ 			}
+diff -ur scripts_1_11_decommented/game/components/summonedEntityComponent.ws scripts_1_12_decommented/game/components/summonedEntityComponent.ws
+--- scripts_1_11_decommented/game/components/summonedEntityComponent.ws	2016-01-12 11:20:59.395275281 +0400
++++ scripts_1_12_decommented/game/components/summonedEntityComponent.ws	2016-01-12 11:21:15.453203191 +0400
+@@ -24,6 +24,7 @@
+ 	{
+ 		var durationObstacle	: W3DurationObstacle;
+ 		var flies				: W3SummonedFlies;
++		var npc					: CNewNPC;
+ 		durationObstacle = (W3DurationObstacle) GetEntity();
+ 		if( durationObstacle )
+ 		{
+@@ -31,7 +32,9 @@
+ 		}
+ 		if( killOnSummonersDeath )
+ 		{
+-			((CNewNPC)GetEntity()).Kill();
++			npc = (CNewNPC)GetEntity();
++			npc.AddTag( 'AchievementKillDontCount' );
++			npc.Kill();
+ 		}
+ 		flies = (W3SummonedFlies) GetEntity();
+ 		if( flies )
+diff -ur scripts_1_11_decommented/game/dlcManager.ws scripts_1_12_decommented/game/dlcManager.ws
+--- scripts_1_11_decommented/game/dlcManager.ws	2016-01-12 11:21:01.623930737 +0400
++++ scripts_1_12_decommented/game/dlcManager.ws	2016-01-12 11:21:17.505727817 +0400
+@@ -17,7 +17,7 @@
+ 	}
+ 	public function IsEP2Available():bool
+ 	{
+-		return IsDLCAvailable('ep2');
++		return IsDLCAvailable('bob_000_000');
+ 	}
+ 	public function IsAnyDLCAvailable():bool
+ 	{
+diff -ur scripts_1_11_decommented/game/gameplay/ability/abilityManager.ws scripts_1_12_decommented/game/gameplay/ability/abilityManager.ws
+--- scripts_1_11_decommented/game/gameplay/ability/abilityManager.ws	2016-01-12 11:21:05.825051351 +0400
++++ scripts_1_12_decommented/game/gameplay/ability/abilityManager.ws	2016-01-12 11:21:21.618783015 +0400
+@@ -8,6 +8,7 @@
+ 	private var overhealBonus : float;
+ 	import final function CacheStaticScriptData();
+ 	import final function SetInitialStats( diff : EDifficultyMode ) : bool;
++	import final function FixInitialStats( diff : EDifficultyMode ) : bool;
+ 	import final function HasStat( stat : EBaseCharacterStats ) : bool;
+ 	import final function StatAddNew( stat : EBaseCharacterStats, optional max : float );
+ 	import final function RestoreStat( stat : EBaseCharacterStats );
+@@ -63,9 +64,15 @@
+ 			if(!SetInitialStats(diff))
+ 				return false;
+ 		}
+-		else if(!ignoresDifficultySettings)
++		else
+ 		{
+-			CacheDifficultyAbilities();
++			if ( !FixInitialStats(diff) )
++			{
++				if(!ignoresDifficultySettings)
++				{
++					CacheDifficultyAbilities();
++				}
++			}
+ 		}
+ 		if(!ignoresDifficultySettings && usedDifficultyMode != diff)
+ 		{
+diff -ur scripts_1_11_decommented/game/gameplay/ability/PlayerAbilityManager.ws scripts_1_12_decommented/game/gameplay/ability/PlayerAbilityManager.ws
+--- scripts_1_11_decommented/game/gameplay/ability/PlayerAbilityManager.ws	2016-01-12 11:21:05.792026820 +0400
++++ scripts_1_12_decommented/game/gameplay/ability/PlayerAbilityManager.ws	2016-01-12 11:21:21.587759971 +0400
+@@ -626,6 +626,7 @@
+ 	{
+ 		var attributeName : name;
+ 		var skill : ESkill;
++		var blizzard : W3Potion_Blizzard;
+ 		super.GetStaminaActionCostInternal(action, isPerSec, cost, delay, abilityName);
+ 		if(isPerSec)
+ 		{
+@@ -645,11 +646,15 @@
+ 			cost.valueBase = 0;
+ 			cost.valueMultiplicative = 0;
+ 		}
+-		if(thePlayer.HasBuff(EET_Blizzard) && owner == GetWitcherPlayer() && GetWitcherPlayer().GetPotionBuffLevel(EET_Blizzard) == 3 && thePlayer.HasBuff(EET_BattleTrance) && GetStatPercents(BCS_Focus) == 1)
++		if( thePlayer.HasBuff( EET_Blizzard ) && owner == GetWitcherPlayer() && GetWitcherPlayer().GetPotionBuffLevel( EET_Blizzard ) == 3 && thePlayer.HasBuff( EET_BattleTrance ) )
+ 		{
+-			cost.valueAdditive = 0;
+-			cost.valueBase = 0;
+-			cost.valueMultiplicative = 0;
++			blizzard = ( W3Potion_Blizzard )thePlayer.GetBuff( EET_Blizzard );
++			if( blizzard.IsSlowMoActive() )
++			{
++				cost.valueAdditive = 0;
++				cost.valueBase = 0;
++				cost.valueMultiplicative = 0;
++			}
+ 		}
+ 	}
+ 	protected final function GetNonBlockedSkillAbilitiesList( optional tags : array<name> ) : array<name>
+@@ -1582,7 +1587,9 @@
+ 		{
+ 			mutagens = GetWitcherPlayer().GetDrunkMutagens();
+ 			if(mutagens.Size() > 0)
+-				charStats.AddAbilityMultiple(GetSkillAbilityName(skill), GetSkillLevel(skill));
++			{
++				charStats.AddAbilityMultiple( GetSkillAbilityName( skill ), (GetSkillLevel( skill ) * mutagens.Size() ));
++			}
+ 		}
+ 		else if(skill == S_Magic_s11)
+ 		{
+@@ -1607,15 +1614,15 @@
+ 		}
+ 		else if(skill == S_Perk_05)
+ 		{
+-			SetPerkArmorBonus(S_Perk_05, true);
++			SetPerkArmorBonus(S_Perk_05);
+ 		}
+ 		else if(skill == S_Perk_06)
+ 		{
+-			SetPerkArmorBonus(S_Perk_06, true);
++			SetPerkArmorBonus(S_Perk_06);
+ 		}
+ 		else if(skill == S_Perk_07)
+ 		{
+-			SetPerkArmorBonus(S_Perk_07, true);
++			SetPerkArmorBonus(S_Perk_07);
+ 		}
+ 		else if(skill == S_Perk_11)
+ 		{
+@@ -1709,7 +1716,9 @@
+ 		{
+ 			mutagens = GetWitcherPlayer().GetDrunkMutagens();
+ 			if(mutagens.Size() > 0)
+-				charStats.RemoveAbilityMultiple(GetSkillAbilityName(S_Alchemy_s13), GetSkillLevel(skill));
++			{
++				charStats.RemoveAbilityMultiple( GetSkillAbilityName( S_Alchemy_s13 ), ( GetSkillLevel( skill ) * mutagens.Size() ));
++			}
+ 		}
+ 		else if(skill == S_Alchemy_s20)
+ 		{
+@@ -1751,15 +1760,15 @@
+ 		}
+ 		else if(skill == S_Perk_05)
+ 		{
+-			SetPerkArmorBonus(S_Perk_05, false);
++			SetPerkArmorBonus(S_Perk_05);
+ 		}
+ 		else if(skill == S_Perk_06)
+ 		{
+-			SetPerkArmorBonus(S_Perk_06, false);
++			SetPerkArmorBonus(S_Perk_06);
+ 		}
+ 		else if(skill == S_Perk_07)
+ 		{
+-			SetPerkArmorBonus(S_Perk_07, false);
++			SetPerkArmorBonus(S_Perk_07);
+ 		}
+ 		else if(skill == S_Perk_11)
+ 		{
+@@ -1794,7 +1803,7 @@
+ 			MutagensSyngergyBonusProcess(true, GetSkillLevel(S_Alchemy_s19));
+ 		}
+ 	}
+-	private final function SetPerkArmorBonus(skill : ESkill, enable : bool)
++	public final function SetPerkArmorBonus(skill : ESkill)
+ 	{
+ 		var item : SItemUniqueId;
+ 		var armors : array<SItemUniqueId>;
+@@ -1832,19 +1841,29 @@
+ 			cnt = medium;
+ 		else
+ 			cnt = heavy;
+-		if(cnt > 0)
+-			UpdatePerkArmorBonus(skill, enable, cnt);
++		UpdatePerkArmorBonus(skill, cnt);
+ 	}
+-	public final function UpdatePerkArmorBonus(skill : ESkill, enable : bool, optional count : int)
++	protected final function UpdatePerkArmorBonus(skill : ESkill, count : int)
+ 	{
+ 		var abilityName : name;
++		var currAbs : int;
+ 		abilityName = GetSkillAbilityName(skill);
+ 		if(count == 0)
+-			count = 1;
+-		if(enable)
+-			charStats.AddAbilityMultiple(abilityName, count);
++		{
++			charStats.RemoveAbilityAll( abilityName );
++		}
+ 		else
+-			charStats.RemoveAbilityMultiple(abilityName, count);
++		{
++			currAbs = charStats.GetAbilityCount( abilityName );
++			if(currAbs < count)
++			{
++				charStats.AddAbilityMultiple( abilityName, count - currAbs );
++			}
++			else if(currAbs > count)
++			{
++				charStats.RemoveAbilityMultiple( abilityName, currAbs - count );
++			}
++		}
+ 	}
+ 	public final function SetPerk01Abilities(enableDay : bool, enableNight : bool)
+ 	{
+diff -ur scripts_1_11_decommented/game/gameplay/alchemy/alchemyManager.ws scripts_1_12_decommented/game/gameplay/alchemy/alchemyManager.ws
+--- scripts_1_11_decommented/game/gameplay/alchemy/alchemyManager.ws	2016-01-12 11:21:04.216856776 +0400
++++ scripts_1_12_decommented/game/gameplay/alchemy/alchemyManager.ws	2016-01-12 11:21:20.045614458 +0400
+@@ -1,6 +1,8 @@
+ class W3AlchemyManager
+ {
+ 	private var recipes : array<SAlchemyRecipe>;
++	private var isPlayerMounted  : bool;
++	private var isPlayerInCombat : bool;
+ 	public function Init(optional alchemyRecipes : array<name>)
+ 	{
+ 		if(alchemyRecipes.Size() > 0)
+@@ -11,6 +13,8 @@
+ 		{
+ 			LoadRecipesCustomXMLData( GetWitcherPlayer().GetAlchemyRecipes() );
+ 		}
++		isPlayerMounted = thePlayer.GetUsedVehicle();
++		isPlayerInCombat = thePlayer.IsInCombat();
+ 	}
+ 	public function GetRecipe(recipeName : name, out ret : SAlchemyRecipe) : bool
+ 	{
+@@ -95,7 +99,7 @@
+ 			return StrLeft(itemStr, StrLen(itemStr)-2);
+ 		return itemStr;
+ 	}
+-	public function CanCookRecipe(recipeName : name) : EAlchemyExceptions
++	public function CanCookRecipe(recipeName : name, optional ignorePlayerState:bool) : EAlchemyExceptions
+ 	{
+ 		var i, cnt, itemLevel : int;
+ 		var recipe : SAlchemyRecipe;
+@@ -104,10 +108,11 @@
+ 		var itemName : name;
+ 		if(!GetRecipe(recipeName, recipe))
+ 			return EAE_NoRecipe;
+-		if(thePlayer.GetUsedVehicle())
+-			return EAE_Mounted;
+-		if(thePlayer.IsInCombat())
+-			return EAE_InCombat;
++		if (!ignorePlayerState)
++		{
++			if (isPlayerMounted) return EAE_Mounted;
++			if (isPlayerInCombat) return EAE_InCombat;
++		}
+ 		itemType = GetItemNameWithoutLevelAsString(recipe.cookedItemName);
+ 		if( theGame.GetDefinitionsManager().IsItemSingletonItem(recipe.cookedItemName) )
+ 		{
+diff -ur scripts_1_11_decommented/game/gameplay/board.ws scripts_1_12_decommented/game/gameplay/board.ws
+--- scripts_1_11_decommented/game/gameplay/board.ws	2016-01-12 11:21:03.781533416 +0400
++++ scripts_1_12_decommented/game/gameplay/board.ws	2016-01-12 11:21:19.609290354 +0400
+@@ -237,13 +237,32 @@
+ 		}
+ 		return true;
+ 	}
+-	function AddErrand( newErrand : ErrandDetailsList )
++	function FindErrand( errand : ErrandDetailsList ) : int
++	{
++		var i : int;
++		for( i = 0; i < addedNotes.Size(); i += 1 )
++		{
++			if( errand.errandStringKey == addedNotes[i].errandStringKey )
++			{
++				return i;			}
++		}
++		return -1;
++	}
++	function AddErrand( newErrand : ErrandDetailsList, optional forceActivate : bool )
+ 	{
+ 		var i : int;
+ 		if( CanAddErrand( newErrand ) )
+ 		{
+ 			addedNotes.Insert( 0, newErrand );
+ 		}
++		else if ( forceActivate )
++		{
++			i = FindErrand( newErrand );
++			if ( i != -1 )
++			{
++				addedNotes[ i ].errandPosition = 0;
++			}
++		}
+ 		else
+ 		{
+ 			LogChannel( 'NoticeBoardDebug', "The errand "+newErrand.errandStringKey+" was added before!" );
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effectManager.ws scripts_1_12_decommented/game/gameplay/effects/effectManager.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effectManager.ws	2016-01-12 11:21:04.726235145 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effectManager.ws	2016-01-12 11:21:20.558995800 +0400
+@@ -98,7 +98,14 @@
+ 			}
+ 			if(effects[i].IsActive())
+ 			{
+-				effects[i].OnTimeUpdated(deltaTime);
++				if ( effects[i].UsesCustomCounter() )
++				{
++					effects[i].CheckCustomCounter();
++				}
++				else
++				{
++					effects[i].OnTimeUpdated(deltaTime);
++				}
+ 			}
+ 			else
+ 			{
+@@ -611,6 +618,19 @@
+ 				return EI_Deny;
+ 			}
+ 		}
++		if( owner == thePlayer && thePlayer.HasBuff( EET_Mutagen08 ) )
++		{
++			if( effectType == EET_Knockdown )
++			{
++				LogEffects( "EffectManager.InternalAddEffect: changing EET_Knockdown to EET_Stagger due to Mutagen 8 in effect" );
++				effectType = EET_Stagger;
++			}
++			else if( effectType == EET_LongStagger || effectType == EET_Stagger )
++			{
++				LogEffects( "EffectManager.InternalAddEffect: denying " + effectType + " due to Mutagen 8 in effect" );
++				return EI_Deny;
++			}
++		}
+ 		if( ((W3PlayerWitcher)owner) && GetWitcherPlayer().IsAnyQuenActive())
+ 		{
+ 			hasQuen = true;
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effects/applicator/knockdownTypeApplicator.ws scripts_1_12_decommented/game/gameplay/effects/effects/applicator/knockdownTypeApplicator.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effects/applicator/knockdownTypeApplicator.ws	2016-01-12 11:21:05.073493090 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effects/applicator/knockdownTypeApplicator.ws	2016-01-12 11:21:20.910256718 +0400
+@@ -15,16 +15,7 @@
+ 		var null : SAbilityAttributeValue;
+ 		var npc : CNewNPC;
+ 		var params : SCustomEffectParams;
+-		var mutagen : CBaseGameplayEffect;
+ 		var min, max : SAbilityAttributeValue;
+-		var encumbranceBonus : float;
+-		if (target == thePlayer && thePlayer.HasBuff(EET_Mutagen08))
+-		{
+-			mutagen = thePlayer.GetBuff(EET_Mutagen08);
+-			theGame.GetDefinitionsManager().GetAbilityAttributeValue(mutagen.GetAbilityName(), 'resistGainRate', min, max);
+-			encumbranceBonus = GetWitcherPlayer().GetEncumbrance() * CalculateAttributeValue(GetAttributeRandomizedValue(min, max));
+-			resistance += encumbranceBonus / 100;
+-		}
+ 		if(isOnPlayer)
+ 		{
+ 			thePlayer.OnRangedForceHolster( true, true, false );
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effects/baseEffect.ws scripts_1_12_decommented/game/gameplay/effects/effects/baseEffect.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effects/baseEffect.ws	2016-01-12 11:21:05.244620204 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effects/baseEffect.ws	2016-01-12 11:21:21.079382346 +0400
+@@ -6,6 +6,7 @@
+ 	protected var timeLeft : float;
+ 	protected var pauseCounters : array<SBuffPauseLock>;
+ 	protected var isActive : bool;
++	protected var usesCustomCounter : bool;
+ 	private   var resistStat : ECharacterDefenseStats;
+ 	protected var resistance : float;
+ 	protected var creatorPowerStat : SAbilityAttributeValue;
+@@ -416,6 +417,8 @@
+ 		if(isOnPlayer && IsNameValid(onAddedSound))
+ 			theSound.SoundEvent(onAddedSound);
+ 	}
++	public function CheckCustomCounter()
++	{}
+ 	public function OnTimeUpdated(dt : float)
+ 	{
+ 		var toxicityThreshold : float;
+@@ -427,7 +430,7 @@
+ 				timeLeft -= dt;
+ 				if( timeLeft <= 0 )
+ 				{
+-					if(isPotionEffect && isOnPlayer && thePlayer.CanUseSkill(S_Alchemy_s03))
++					if(isPotionEffect && isOnPlayer && thePlayer.CanUseSkill(S_Alchemy_s03) && effectType != EET_WhiteRaffardDecoction )
+ 					{
+ 						toxicityThreshold = thePlayer.GetStatMax(BCS_Toxicity) * (1 - CalculateAttributeValue( thePlayer.GetSkillAttributeValue(S_Alchemy_s03, 'toxicity_threshold', false, true) ) * thePlayer.GetSkillLevel(S_Alchemy_s03));
+ 						if(thePlayer.GetStat(BCS_Toxicity, true) > toxicityThreshold)
+@@ -532,6 +535,7 @@
+ 	public function ShowOnHUD() : bool									{return showOnHUD;}
+ 	public function GetIcon() : string									{return iconPath;}
+ 	public function IsActive() : bool									{return isActive;}
++	public function UsesCustomCounter() : bool							{return usesCustomCounter;}
+ 	public function GetEffectNameLocalisationKey() : string
+ 	{
+ 		var str: string;
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effects/critical/stagger.ws scripts_1_12_decommented/game/gameplay/effects/effects/critical/stagger.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effects/critical/stagger.ws	2016-01-12 11:21:05.124531001 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effects/critical/stagger.ws	2016-01-12 11:21:20.961294630 +0400
+@@ -70,6 +70,10 @@
+ 			thePlayer.UnblockAction( EIAB_Dodge, EffectTypeToName( effectType ) );
+ 			thePlayer.UnblockAction( EIAB_Roll, EffectTypeToName( effectType ) );
+ 		}
++		if(target.IsInAir())
++		{
++			target.RequestCriticalAnimStop(false);
++		}
+ 	}
+ 	event OnEffectRemoved()
+ 	{
+Only in scripts_1_12_decommented/game/gameplay/effects/effects/other: oil.ws
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effects/potion/Blizzard.ws scripts_1_12_decommented/game/gameplay/effects/effects/potion/Blizzard.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effects/potion/Blizzard.ws	2016-01-12 11:21:05.611893016 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effects/potion/Blizzard.ws	2016-01-12 11:21:21.410628397 +0400
+@@ -12,6 +12,10 @@
+ 		super.OnEffectAdded(customParams);
+ 		slowdownFactor = CalculateAttributeValue(effectValue);
+ 	}
++	public final function IsSlowMoActive() : bool
++	{
++		return slowdownCauserIds.Size();
++	}
+ 	public function KilledEnemy()
+ 	{
+ 		if(slowdownCauserIds.Size() == 0)
+diff -ur scripts_1_11_decommented/game/gameplay/effects/effectTypes.ws scripts_1_12_decommented/game/gameplay/effects/effectTypes.ws
+--- scripts_1_11_decommented/game/gameplay/effects/effectTypes.ws	2016-01-12 11:21:04.665189800 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/effectTypes.ws	2016-01-12 11:21:20.497950455 +0400
+@@ -138,7 +138,7 @@
+ 	EET_Swarm,
+ 	EET_Pull,
+ 	EET_AbilityOnLowHealth,
+-EET_Unused2,
++	EET_Oil,
+ 	EET_CounterStrikeHit,
+ 	EET_Drowning,
+ 	EET_Snowstorm,
+diff -ur scripts_1_11_decommented/game/gameplay/effects/gameEffectManager.ws scripts_1_12_decommented/game/gameplay/effects/gameEffectManager.ws
+--- scripts_1_11_decommented/game/gameplay/effects/gameEffectManager.ws	2016-01-12 11:21:04.690208384 +0400
++++ scripts_1_12_decommented/game/gameplay/effects/gameEffectManager.ws	2016-01-12 11:21:20.522969039 +0400
+@@ -99,7 +99,7 @@
+ 	{
+ 		var e : CBaseGameplayEffect;
+ 		var params : SEffectInitInfo;
+-		if(effect == EET_Undefined || effect == EET_Unused1 || effect == EET_Unused2)
++		if(effect == EET_Undefined || effect == EET_Unused1)
+ 			return NULL;
+ 		if(!effects[effect])
+ 			CacheEffect(effect);
+@@ -238,6 +238,7 @@
+ 			case EET_WolfHour : 				effects[effect] = new W3Effect_WolfHour in this;			 		break;
+ 			case EET_Weaken : 					effects[effect] = new W3Effect_Weaken in this;				 		break;
+ 			case EET_Runeword8 : 				effects[effect] = new W3Effect_Runeword8 in this;			 		break;
++			case EET_Oil :						effects[effect] = new W3Effect_Oil in this;			 				break;
+ 			case EET_Fact : 					effects[effect] = new W3Potion_Fact in this;						break;
+ 			case EET_StaggerAura :				effects[effect] = new W3StaggerAura in this;						break;
+ 			case EET_FireAura :					effects[effect] = new W3FireAura in this;							break;
+@@ -497,6 +498,7 @@
+ 		case "WolfHourEffect" : type = EET_WolfHour; break;
+ 		case "WeakenEffect" : type = EET_Weaken; break;
+ 		case "Runeword8Effect" : type = EET_Runeword8; break;
++		case "OilEffect" : type = EET_Oil; break;
+ 		case "StaggerAuraEffect" : type = EET_StaggerAura; break;
+ 		case "FireAuraEffect" : type = EET_FireAura; break;
+ 		case "WeakeningAuraEffect" : type = EET_WeakeningAura; break;
+@@ -647,6 +649,7 @@
+ 		case EET_WolfHour : return 'WolfHourEffect';
+ 		case EET_Weaken : return 'WeakenEffect';
+ 		case EET_Runeword8 : return 'Runeword8Effect';
++		case EET_Oil : return 'OilEffect';
+ 		case EET_StaggerAura : return 'StaggerAuraEffect';
+ 		case EET_FireAura : return 'FireAuraEffect';
+ 		case EET_WeakeningAura : return 'WeakeningAuraEffect';
+diff -ur scripts_1_11_decommented/game/gameplay/focus/focus.ws scripts_1_12_decommented/game/gameplay/focus/focus.ws
+--- scripts_1_11_decommented/game/gameplay/focus/focus.ws	2016-01-12 11:21:04.261890227 +0400
++++ scripts_1_12_decommented/game/gameplay/focus/focus.ws	2016-01-12 11:21:20.090647909 +0400
+@@ -156,7 +156,7 @@
+ 		EnableVisuals( true );
+ 		EnableExtendedVisuals( true, effectFadeTime );
+ 		thePlayer.BlockAction( EIAB_Jump, 'focus' );
+-		theTelemetry.Log( TE_HERO_FOCUS_ON );
++		theTelemetry.LogWithName( TE_HERO_FOCUS_ON );
+ 		if ( theGame.GetEngineTimeAsSeconds() - activationSoundTimer > activationSoundInterval )
+ 		{
+ 			activationSoundTimer = theGame.GetEngineTimeAsSeconds();
+@@ -202,7 +202,7 @@
+ 		isUnderwaterFocus = false;
+ 		isNight = false;
+ 		thePlayer.UnblockAction( EIAB_Jump, 'focus' );
+-		theTelemetry.Log( TE_HERO_FOCUS_OFF );
++		theTelemetry.LogWithName( TE_HERO_FOCUS_OFF );
+ 		theSound.SoundEvent( 'expl_focus_stop' );
+ 		if ( theGame.GetEngineTimeAsSeconds() - activationSoundTimer > activationSoundInterval )
+ 		{
+diff -ur scripts_1_11_decommented/game/gameplay/interactive/beeSwarm.ws scripts_1_12_decommented/game/gameplay/interactive/beeSwarm.ws
+--- scripts_1_11_decommented/game/gameplay/interactive/beeSwarm.ws	2016-01-12 11:21:03.583386231 +0400
++++ scripts_1_12_decommented/game/gameplay/interactive/beeSwarm.ws	2016-01-12 11:21:19.409141682 +0400
+@@ -80,7 +80,7 @@
+ 		if( bIsEnabled )
+ 		{
+ 			Enable(false);
+-			PlayEffect( 'bee_fire' );
++			PlayEffectSingle( 'bee_fire' );
+ 			AddTimer( 'DestroyEnt', destroyEntAfter );
+ 		}
+ 		super.OnFireHit(source);
+diff -ur scripts_1_11_decommented/game/gameplay/interactive/repairItem.ws scripts_1_12_decommented/game/gameplay/interactive/repairItem.ws
+--- scripts_1_11_decommented/game/gameplay/interactive/repairItem.ws	2016-01-12 11:21:03.521340143 +0400
++++ scripts_1_12_decommented/game/gameplay/interactive/repairItem.ws	2016-01-12 11:21:19.348096338 +0400
+@@ -67,8 +67,6 @@
+ 			{
+ 				SoundEvent("gui_inventory_armor_attach");
+ 			}
+-			theGame.FadeOutAsync();
+-			AddTimer('FadeInTimer', 1);
+ 		}
+ 		else
+ 		{
+diff -ur scripts_1_11_decommented/game/gameplay/interactive/toxicCloudEntity.ws scripts_1_12_decommented/game/gameplay/interactive/toxicCloudEntity.ws
+--- scripts_1_11_decommented/game/gameplay/interactive/toxicCloudEntity.ws	2016-01-12 11:21:03.562370620 +0400
++++ scripts_1_12_decommented/game/gameplay/interactive/toxicCloudEntity.ws	2016-01-12 11:21:19.389126815 +0400
+@@ -168,7 +168,7 @@
+ 		if(area == GetPoisonAreaUnsafe())
+ 		{
+ 			actor = (CActor)ent;
+-			if(actor && !entitiesInPoisonRange.Contains(actor) && IsRequiredAttitudeBetween(bombOwner, actor, true))
++			if(actor && !entitiesInPoisonRange.Contains(actor) && (!bombOwner || IsRequiredAttitudeBetween(bombOwner, actor, true)) )
+ 			{
+ 				entitiesInPoisonRange.PushBack(actor);
+ 				if(entitiesInPoisonRange.Size() == 1)
+@@ -204,7 +204,7 @@
+ 		else if(area == GetGasAreaUnsafe())
+ 		{
+ 			gameplayEnt = (CGameplayEntity)ent;
+-			if(gameplayEnt && IsRequiredAttitudeBetween(bombOwner, gameplayEnt, true))
++			if(gameplayEnt && (!bombOwner || IsRequiredAttitudeBetween(bombOwner, gameplayEnt, true)) )
+ 			{
+ 				entitiesInExplosionRange.PushBack(gameplayEnt);
+ 				expBolt = (W3ExplosiveBolt)gameplayEnt;
+diff -ur scripts_1_11_decommented/game/gameplay/items/rangedWeapons/rangedWeapon.ws scripts_1_12_decommented/game/gameplay/items/rangedWeapons/rangedWeapon.ws
+--- scripts_1_11_decommented/game/gameplay/items/rangedWeapons/rangedWeapon.ws	2016-01-12 11:21:06.350441614 +0400
++++ scripts_1_12_decommented/game/gameplay/items/rangedWeapons/rangedWeapon.ws	2016-01-12 11:21:22.203217136 +0400
+@@ -595,6 +595,13 @@
+ 	protected function RaiseOwnerGraphEvents( eventName : name, force : bool ) : bool
+ 	{
+ 		var tempEventName : name;
++		if( eventName == 'Crossbow_Draw' )
++		{
++			if( ownerPlayerWitcher.IsInCombat() && ownerPlayerWitcher.GetIsSprinting() )
++			{
++				return false;
++			}
++		}
+ 		if ( ownerPlayer.IsUsingVehicle() )
+ 		{
+ 			if ( eventName == 'Crossbow_Draw' )
+diff -ur scripts_1_11_decommented/game/gameplay/items/spells/quenEntity.ws scripts_1_12_decommented/game/gameplay/items/spells/quenEntity.ws
+--- scripts_1_11_decommented/game/gameplay/items/spells/quenEntity.ws	2016-01-12 11:21:06.228350924 +0400
++++ scripts_1_12_decommented/game/gameplay/items/spells/quenEntity.ws	2016-01-12 11:21:22.084128676 +0400
+@@ -319,7 +319,7 @@
+ 				return parent.effects[0].lastingEffectUpg1;
+ 			else if(level == 2)
+ 				return parent.effects[0].lastingEffectUpg2;
+-			else if(level == 3)
++			else if(level >= 3)
+ 				return parent.effects[0].lastingEffectUpg3;
+ 		}
+ 		return parent.effects[0].lastingEffectUpgNone;
+diff -ur scripts_1_11_decommented/game/gameplay/leveling/levelManager.ws scripts_1_12_decommented/game/gameplay/leveling/levelManager.ws
+--- scripts_1_11_decommented/game/gameplay/leveling/levelManager.ws	2016-01-12 11:21:04.345952669 +0400
++++ scripts_1_12_decommented/game/gameplay/leveling/levelManager.ws	2016-01-12 11:21:20.176711837 +0400
+@@ -74,6 +74,25 @@
+ 	{
+ 		points[ESkillPoint].free = amount;
+ 	}
++	public function FixMaxLevel()
++	{
++		var i : int;
++		if(points[EExperiencePoint].used >= levelDefinitions[GetMaxLevel()].requiredTotalExp)
++		{
++			level = GetMaxLevel();
++			points[EExperiencePoint].free = 0;
++			i = 0;
++			while( levelDefinitions[i].number != level )
++			{
++				i+=1;
++			}
++			points[EExperiencePoint].used = levelDefinitions[i].requiredTotalExp;
++		}
++		else if(level == GetMaxLevel())
++		{
++			points[EExperiencePoint].free = 0;
++		}
++	}
+ 	public function AddPoints(type : ESpendablePointType, amount : int, show : bool )
+ 	{
+ 		var total : int;
+@@ -86,7 +105,7 @@
+ 			LogAssert(false, "W3LevelManager.AddPoints: amount of <<" + type + ">> is <= 0 !!!");
+ 			return;
+ 		}
+-		if(type == EExperiencePoint && level == 70)
++		if(type == EExperiencePoint && level >= GetMaxLevel())
+ 			return;
+ 		points[type].free += amount;
+ 		if(type == EExperiencePoint)
+@@ -107,6 +126,10 @@
+ 				else
+ 					break;
+ 			}
++			if(level == GetMaxLevel())
++			{
++				points[type].free = 0;
++			}
+ 			theTelemetry.LogWithValue(TE_HERO_EXP_EARNED, amount);
+ 			arrInt.PushBack(amount);
+ 			hud.OnExperienceUpdate(amount, show);
+@@ -138,11 +161,28 @@
+ 			LogAssert(false, "W3LevelManager.SpendPoints: trying to spend more than you have!");
+ 		}
+ 	}
++	public final function UnspendPoints(type : ESpendablePointType, amount : int)
++	{
++		if(amount <= 0)
++		{
++			LogAssert(false, "W3LevelManager.UnspendPoints: amount to restore is <=0");
++			return;
++		}
++		if( points[type].used >= amount )
++		{
++			points[type].free += amount;
++			points[type].used -= amount;
++		}
++		else
++		{
++			LogAssert(false, "W3LevelManager.UnspendPoints: trying to restore more than you have spent!");
++		}
++	}
+ 	public function GetPointsFree(type : ESpendablePointType) : int			{return points[type].free;}
+ 	public function GetPointsUsed(type : ESpendablePointType) : int			{return points[type].used;}
+ 	public function GetPointsTotal(type : ESpendablePointType) : int		{return points[type].free + points[type].used;}
+-	public function GetLevel() : int										{var _level : int; _level = level; if ( _level > 70 ) _level = 70; return _level;}
+-	public function GetMaxLevel() : int										{return levelDefinitions[levelDefinitions.Size()-1].number;}
++	public function GetLevel() : int										{return level;}
++	public function GetMaxLevel() : int										{return 70;}
+ 	public function GetTotalExpForCurrLevel() : int
+ 	{
+ 		if ( level > 0 )
+@@ -160,7 +200,7 @@
+ 	public function GainLevel( show : bool )
+ 	{
+ 		var totalExp : int;
+-		if(level == levelDefinitions[levelDefinitions.Size()-1].number)
++		if(level == GetMaxLevel())
+ 		{
+ 			LogAssert(false, "W3LevelManager.GainLevel: already at max level, so why trying to gain a level?");
+ 			return;
+diff -ur scripts_1_11_decommented/game/gameplay/monster_hunting/monster_clues.ws scripts_1_12_decommented/game/gameplay/monster_hunting/monster_clues.ws
+--- scripts_1_11_decommented/game/gameplay/monster_hunting/monster_clues.ws	2016-01-12 11:21:03.952660530 +0400
++++ scripts_1_12_decommented/game/gameplay/monster_hunting/monster_clues.ws	2016-01-12 11:21:19.781418211 +0400
+@@ -858,6 +858,17 @@
+ 		currentAppearance = appearance;
+ 		ApplyAppearance( appearance );
+ 	}
++	event OnInteractionActivated( interactionComponentName : string, activator : CEntity )
++	{
++		if ( isAvailable && stashWasLooted && HasTag( 'mq1058_girl_doll' ) )
++		{
++			if ( thePlayer.GetInventory().GetItemId( 'mq1058_doll' ) == GetInvalidUniqueId() )
++			{
++				stashWasLooted = false;
++				SetAppearance( 'undetected' );
++			}
++		}
++	}
+ 	event OnInteraction( actionName : string, activator : CEntity )
+ 	{
+ 		if( stashOpenDelay > interactionAnimTime )
+diff -ur scripts_1_11_decommented/game/gameplayEntity.ws scripts_1_12_decommented/game/gameplayEntity.ws
+--- scripts_1_11_decommented/game/gameplayEntity.ws	2016-01-12 11:21:07.260117325 +0400
++++ scripts_1_12_decommented/game/gameplayEntity.ws	2016-01-12 11:21:23.056851220 +0400
+@@ -126,15 +126,8 @@
+ 	public function RemoveAbility(abilityName : name)													{GetCharacterStats().RemoveAbility(abilityName);}
+ 	public function AddAbilityMultiple(abilityName : name, count : int)									{GetCharacterStats().AddAbilityMultiple(abilityName, count);}
+ 	public function RemoveAbilityMultiple(abilityName : name, count : int)								{GetCharacterStats().RemoveAbilityMultiple(abilityName, count);}
+-	public function RemoveAbilityAll(abilityName : name)
+-	{
+-		var characterStats : CCharacterStats;
+-		characterStats = GetCharacterStats();
+-		while ( characterStats.HasAbility(abilityName) )
+-		{
+-			characterStats.RemoveAbility(abilityName);
+-		}
+-	}
++	public function RemoveAbilityAll(abilityName : name)												{GetCharacterStats().RemoveAbilityAll(abilityName);}
++	public function GetAbilityCount(abilityName : name) : int											{return GetCharacterStats().GetAbilityCount(abilityName);}
+ 	public function AddTag(tag : name)
+ 	{
+ 		var i : int;
+diff -ur scripts_1_11_decommented/game/gui/hud/hud.ws scripts_1_12_decommented/game/gui/hud/hud.ws
+--- scripts_1_11_decommented/game/gui/hud/hud.ws	2016-01-12 11:21:00.836345715 +0400
++++ scripts_1_12_decommented/game/gui/hud/hud.ws	2016-01-12 11:21:16.683116777 +0400
+@@ -7,6 +7,8 @@
+ {
+ 	HVS_System,
+ 	HVS_User,
++	HVS_Scene,
++	HVS_RadialMenu,
+ };
+ class CR4ScriptedHud extends CR4Hud
+ {
+@@ -40,8 +42,14 @@
+ 	private var m_scaleformOffsetY				: int;	default m_scaleformOffsetY = 0;
+ 	private var m_visibleHudBySystem : bool;	default m_visibleHudBySystem = true;
+ 	private var m_visibleHudByUser   : bool;	default m_visibleHudByUser = true;
++	private var m_visibleHudByScene  : bool;	default m_visibleHudByScene = false;
++	private var m_visibleHudByRadial : bool;	default m_visibleHudByRadial = false;
++	private var m_lastUsedDeviceName : EInputDeviceType;
+ 	event OnTick( timeDelta : float )
+ 	{
++		var curUsedDeviceName : EInputDeviceType;
++		var overlayPopupRef	  : CR4OverlayPopup;
++		var guiManager        : CR4GuiManager;
+ 		ClearCachedPositionForEntity();
+ 		UpdateLootPopupContext();
+ 		if( currentInputContext != theInput.GetContext() )
+@@ -69,6 +77,19 @@
+ 		UpdateDLCPendingMessage();
+ 		UpdateDeathTimer(timeDelta);
+ 		GetHudEventController().RunDelayedEvents();
++		curUsedDeviceName = theInput.GetLastUsedGamepadType();
++		if( ( curUsedDeviceName == GT_Steam || m_lastUsedDeviceName == GT_Steam ) && curUsedDeviceName != m_lastUsedDeviceName )
++		{
++			m_lastUsedDeviceName = curUsedDeviceName;
++			UpdateInputDeviceType();
++			guiManager = theGame.GetGuiManager();
++			overlayPopupRef = (CR4OverlayPopup) guiManager.GetPopup( 'OverlayPopup' );
++			if( overlayPopupRef )
++			{
++				overlayPopupRef.UpdateGamepadType();
++			}
++			UpdateInputDevice();
++		}
+ 	}
+ 	protected function CheckDLCMessagePending():void
+ 	{
+@@ -256,7 +277,7 @@
+ 		m_fxSetIsDynamicSFF.InvokeSelfOneArg(FlashArgBool(m_isDynamic));
+ 		UpdateHudConfigs();
+ 		UpdateAcceptCancelSwaping();
+-		UpdateControlSchemeLock();
++		UpdateInputDeviceType();
+ 		CheckDLCMessagePending();
+ 	}
+ 	public function IsHudVisibilityAllowedByUser() : bool
+@@ -267,14 +288,9 @@
+ 	{
+ 		var previouslyVisibleHud : bool;
+ 		var currentlyVisibleHud : bool;
+-		if ( !show && source == HVS_User )
+-		{
+-			if ( IsRadialMenuOpened() )
+-			{
+-				return;
+-			}
+-		}
+-		previouslyVisibleHud = ( m_visibleHudBySystem && m_visibleHudByUser );
++		LogChannel('hudv', "----------------------------------------- " + show + " " + source );
++		previouslyVisibleHud = ( m_visibleHudBySystem && ( m_visibleHudByUser || m_visibleHudByScene || m_visibleHudByRadial ) );
++		LogChannel('hudv', "P " + previouslyVisibleHud + "   " + m_visibleHudBySystem + " " + m_visibleHudByUser + " " + m_visibleHudByScene + " " + m_visibleHudByRadial );
+ 		if ( source == HVS_System )
+ 		{
+ 			m_visibleHudBySystem = show;
+@@ -282,8 +298,21 @@
+ 		else if ( source == HVS_User )
+ 		{
+ 			m_visibleHudByUser = show;
++			if ( m_visibleHudByScene )
++			{
++				m_visibleHudByScene = false;
++			}
+ 		}
+-		currentlyVisibleHud = ( m_visibleHudBySystem && m_visibleHudByUser );
++		else if ( source == HVS_Scene )
++		{
++			m_visibleHudByScene = show;
++		}
++		else if ( source == HVS_RadialMenu )
++		{
++			m_visibleHudByRadial = show;
++		}
++		currentlyVisibleHud = ( m_visibleHudBySystem && ( m_visibleHudByUser || m_visibleHudByScene || m_visibleHudByRadial ) );
++		LogChannel('hudv', "C " + currentlyVisibleHud + "   " + m_visibleHudBySystem + " " + m_visibleHudByUser + " " + m_visibleHudByScene + " " + m_visibleHudByRadial );
+ 		if ( previouslyVisibleHud != currentlyVisibleHud )
+ 		{
+ 			m_HudFlashSFS.SetVisible( currentlyVisibleHud );
+@@ -291,7 +320,31 @@
+ 	}
+ 	public function ToggleHudByUser()
+ 	{
+-		ForceShow( !m_visibleHudByUser, HVS_User );
++		var inGameConfigWrapper	: CInGameConfigWrapper;
++		var newValue : bool;
++		if ( IsRadialMenuOpened() )
++		{
++			return;
++		}
++		inGameConfigWrapper = (CInGameConfigWrapper)theGame.GetInGameConfigWrapper();
++		if ( m_visibleHudByScene )
++		{
++			newValue = false;
++		}
++		else
++		{
++			newValue = !inGameConfigWrapper.GetVarValue( 'Hud', 'HudVisibility' );
++		}
++		if ( newValue )
++		{
++			inGameConfigWrapper.SetVarValue( 'Hud', 'HudVisibility', "true" );
++		}
++		else
++		{
++			inGameConfigWrapper.SetVarValue( 'Hud', 'HudVisibility', "false" );
++		}
++		theGame.SaveUserSettings();
++		ForceShow( newValue, HVS_User );
+ 	}
+ 	public function UpdateAcceptCancelSwaping():void
+ 	{
+@@ -310,6 +363,15 @@
+ 			radialMenuModule.UpdateSwapAcceptCancel();
+ 		}
+ 	}
++	protected function UpdateInputDeviceType():void
++	{
++		var deviceType : EInputDeviceType;
++		if (m_fxSetGamepadType)
++		{
++			deviceType = theInput.GetLastUsedGamepadType();
++			m_fxSetGamepadType.InvokeSelfOneArg( FlashArgUInt(deviceType) );
++		}
++	}
+ 	protected function UpdateControlSchemeLock():void
+ 	{
+ 		if (m_fxLockControlScheme && m_guiManager)
+@@ -1146,6 +1208,22 @@
+ 				break;
+ 		}
+ 	}
++	public function OnRadialOpened()
++	{
++		ForceShow( true, HVS_RadialMenu );
++	}
++	public function OnRadialClosed()
++	{
++		ForceShow( false, HVS_RadialMenu );
++	}
++	public function OnCutsceneStarted()
++	{
++		ForceShow( true, HVS_Scene );
++	}
++	public function OnCutsceneEnded()
++	{
++		ForceShow( false, HVS_Scene );
++	}
+ 	private var _cachedEntity : CEntity;
+ 	private var _cachedEntityPosition : Vector;
+ 	function IsCachedPositionForEntity( entity : CEntity ) : bool
+diff -ur scripts_1_11_decommented/game/gui/hud/modules/hudModuleBuffs.ws scripts_1_12_decommented/game/gui/hud/modules/hudModuleBuffs.ws
+--- scripts_1_11_decommented/game/gui/hud/modules/hudModuleBuffs.ws	2016-01-12 11:21:01.190608863 +0400
++++ scripts_1_12_decommented/game/gui/hud/modules/hudModuleBuffs.ws	2016-01-12 11:21:17.080411890 +0400
+@@ -33,6 +33,7 @@
+ 		var duration : float;
+ 		var initialDuration : float;
+ 		var hasRunword5 : bool;
++		var oilEffect : W3Effect_Oil;
+ 		if ( !CanTick( timeDelta ) )
+ 			return true;
+ 		_previousEffects = _currentEffects;
+@@ -69,6 +70,15 @@
+ 						if(duration < 0.f)
+ 							duration = 0.f;
+ 					}
++					if ( effectArray[i].GetEffectType() == EET_Oil )
++					{
++						oilEffect = (W3Effect_Oil)effectArray[ i ];
++						if ( oilEffect )
++						{
++							initialDuration = oilEffect.GetAmmoInitialCount();
++							duration		= oilEffect.GetAmmoCurrentCount();
++						}
++					}
+ 					if(_currentEffects.Size() < i+1-offset)
+ 					{
+ 						_currentEffects.PushBack(effectArray[i]);
+@@ -121,6 +131,7 @@
+ 		var l_flashObject			: CScriptedFlashObject;
+ 		var l_flashArray			: CScriptedFlashArray;
+ 		var i 						: int;
++		var oilEffect				: W3Effect_Oil;
+ 		l_flashArray = GetModuleFlashValueStorage()().CreateTempFlashArray();
+ 		for(i = 0; i < Min(12,_currentEffects.Size()); i += 1)
+ 		{
+@@ -132,7 +143,17 @@
+ 				l_flashObject.SetMemberFlashString("title",GetLocStringByKeyExt(_currentEffects[i].GetEffectNameLocalisationKey()));
+ 				l_flashObject.SetMemberFlashBool("IsPotion",_currentEffects[i].IsPotionEffect());
+ 				l_flashObject.SetMemberFlashBool("isPositive", !_currentEffects[i].IsNegative());
+-				if ( (W3RepairObjectEnhancement)_currentEffects[i] && GetWitcherPlayer().HasRunewordActive('Runeword 5 _Stats') )
++				l_flashObject.SetMemberFlashBool("usesCustomCounter", _currentEffects[i].UsesCustomCounter());
++				if ( _currentEffects[i].GetEffectType() == EET_Oil )
++				{
++					oilEffect = (W3Effect_Oil)_currentEffects[i];
++					if ( oilEffect )
++					{
++						l_flashObject.SetMemberFlashNumber("duration",        oilEffect.GetAmmoCurrentCount() * 1.0 );
++						l_flashObject.SetMemberFlashNumber("initialDuration", oilEffect.GetAmmoInitialCount() * 1.0 );
++					}
++				}
++				else if ( (W3RepairObjectEnhancement)_currentEffects[i] && GetWitcherPlayer().HasRunewordActive('Runeword 5 _Stats') )
+ 				{
+ 					l_flashObject.SetMemberFlashNumber("duration", -1 );
+ 					l_flashObject.SetMemberFlashNumber("initialDuration", -1 );
+diff -ur scripts_1_11_decommented/game/gui/hud/modules/hudModuleEnemyFocus.ws scripts_1_12_decommented/game/gui/hud/modules/hudModuleEnemyFocus.ws
+--- scripts_1_11_decommented/game/gui/hud/modules/hudModuleEnemyFocus.ws	2016-01-12 11:21:01.213625961 +0400
++++ scripts_1_12_decommented/game/gui/hud/modules/hudModuleEnemyFocus.ws	2016-01-12 11:21:17.104429731 +0400
+@@ -58,6 +58,7 @@
+ 		m_fxSetGeneralVisibility= flashModule.GetMemberFlashFunction( "SetGeneralVisibility" );
+ 		m_mcNPCFocus 			= flashModule.GetChildFlashSprite( "mcNPCFocus" );
+ 		super.OnConfigUI();
++		m_fxSetEnemyName.InvokeSelfOneArg( FlashArgString( "" ) );
+ 		m_fxSetEnemyStamina.InvokeSelfOneArg(FlashArgInt(0));
+ 		hud = (CR4ScriptedHud)theGame.GetHud();
+ 		if (hud)
+@@ -409,6 +410,7 @@
+ 							case 'QuestGiverSide':
+ 							case 'QuestAvailable':
+ 							case 'QuestAvailableHoS':
++							case 'QuestAvailableBaW':
+ 								questIcon = "QuestGiverSide";
+ 								break;
+ 							case 'MonsterQuest':
+diff -ur scripts_1_11_decommented/game/gui/hud/modules/hudModuleItemInfo.ws scripts_1_12_decommented/game/gui/hud/modules/hudModuleItemInfo.ws
+--- scripts_1_11_decommented/game/gui/hud/modules/hudModuleItemInfo.ws	2016-01-12 11:21:00.850356122 +0400
++++ scripts_1_12_decommented/game/gui/hud/modules/hudModuleItemInfo.ws	2016-01-12 11:21:16.698127928 +0400
+@@ -6,6 +6,15 @@
+ 	HudItemInfoBinding_potion3 = 3,
+ 	HudItemInfoBinding_potion4 = 4
+ };
++struct SHudItemInfo
++{
++	var m_icon		: string;
++	var m_category	: string;
++	var m_itemName	: string;
++	var m_ammoStr	: string;
++	var m_btn		: int;
++	var m_pcBtn		: int;
++};
+ class CR4HudModuleItemInfo extends CR4HudModuleBase
+ {
+ 	private var m_currentItemSelected 	: SItemUniqueId;
+@@ -29,8 +38,9 @@
+ 	private var m_fxShowButtonHints : CScriptedFlashFunction;
+ 	private var m_IsPlayerCiri					: bool;
+ 	default m_IsPlayerCiri = false;
+-	private var cached_item0, cached_item1, cached_item2 : SItemUniqueId;
+ 	private var m_runword6Applied : bool;
++	private var m_previousShowButtonHints		: int;						default m_previousShowButtonHints    = -1;
++	private var m_previousSetItemInfo			: array< SHudItemInfo >;
+ 	event  OnConfigUI()
+ 	{
+ 		var flashModule : CScriptedFlashSprite;
+@@ -46,6 +56,7 @@
+ 		m_fxSetItemInfo 		= flashModule.GetMemberFlashFunction( "setItemInfo" );
+ 		m_fxSwitchAnimation		= flashModule.GetMemberFlashFunction( "animatePotionSwitch" );
+ 		m_fxShowButtonHints		= flashModule.GetMemberFlashFunction( "showButtonHints" );
++		m_previousSetItemInfo.Resize( EnumGetMax( 'HudItemInfoBinding' ) + 1 );
+ 		ClearItems();
+ 		SetTickInterval( 0.25 );
+ 		hud = (CR4ScriptedHud)theGame.GetHud();
+@@ -61,12 +72,14 @@
+ 		var alterItem1, alterItem2 : SItemUniqueId;
+ 		var switchAnimation : int;
+ 		var playerInv : CInventoryComponent;
++		var witcherPlayer : W3PlayerWitcher;
+ 		var runword6Applied  : bool;
+ 		var forcedIconUpdate : bool;
+ 		if ( !CanTick( timeDelta ) )
+ 		{
+ 			return true;
+ 		}
++		witcherPlayer = GetWitcherPlayer();
+ 		if( m_IsPlayerCiri != thePlayer.IsCiri() )
+ 		{
+ 			m_IsPlayerCiri = thePlayer.IsCiri();
+@@ -83,43 +96,41 @@
+ 		}
+ 		else
+ 		{
+-			item0 = GetWitcherPlayer().GetSelectedItemId();
++			item0 = witcherPlayer.GetSelectedItemId();
+ 			if ( theInput.LastUsedGamepad() )
+ 			{
+-				GetWitcherPlayer().GetItemEquippedOnSlot( GetWitcherPlayer().GetSelectedPotionSlotUpper(), item1 );
+-				GetWitcherPlayer().GetItemEquippedOnSlot( GetWitcherPlayer().GetSelectedPotionSlotLower(), item2 );
+-				if (GetWitcherPlayer().GetSelectedPotionSlotUpper() == EES_Potion1)
++				witcherPlayer.GetItemEquippedOnSlot( witcherPlayer.GetSelectedPotionSlotUpper(), item1 );
++				witcherPlayer.GetItemEquippedOnSlot( witcherPlayer.GetSelectedPotionSlotLower(), item2 );
++				if ( witcherPlayer.GetSelectedPotionSlotUpper() == EES_Potion1)
+ 				{
+-					GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion3, alterItem1 );
++					witcherPlayer.GetItemEquippedOnSlot( EES_Potion3, alterItem1 );
+ 				}
+ 				else
+ 				{
+-					GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion1, alterItem1 );
++					witcherPlayer.GetItemEquippedOnSlot( EES_Potion1, alterItem1 );
+ 				}
+-				if (GetWitcherPlayer().GetSelectedPotionSlotLower() == EES_Potion2)
++				if ( witcherPlayer.GetSelectedPotionSlotLower() == EES_Potion2)
+ 				{
+-					GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion4, alterItem2 );
++					witcherPlayer.GetItemEquippedOnSlot( EES_Potion4, alterItem2 );
+ 				}
+ 				else
+ 				{
+-					GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion2, alterItem2 );
++					witcherPlayer.GetItemEquippedOnSlot( EES_Potion2, alterItem2 );
+ 				}
+ 				playerInv = thePlayer.GetInventory();
+-				if (!playerInv.IsIdValid(item1) && playerInv.IsIdValid(alterItem1))
++				if ( !playerInv.IsIdValid(item1) && playerInv.IsIdValid( alterItem1 ) )
+ 				{
+-					GetWitcherPlayer().FlipSelectedPotion(true);
++					witcherPlayer.FlipSelectedPotion( true );
+ 				}
+-				else if (!playerInv.IsIdValid(item1) && playerInv.IsIdValid(alterItem1))
++				else if ( !playerInv.IsIdValid(item2) && playerInv.IsIdValid( alterItem2 ) )
+ 				{
+-					GetWitcherPlayer().FlipSelectedPotion(false);
++					witcherPlayer.FlipSelectedPotion( false );
+ 				}
+-				else
+-				if (m_currentItemOnSlot1 == alterItem1)
++				else if ( m_currentItemOnSlot1 == alterItem1 )
+ 				{
+ 					switchAnimation = 1;
+ 				}
+-				else
+-				if (m_currentItemOnSlot2 == alterItem2)
++				else if ( m_currentItemOnSlot2 == alterItem2 )
+ 				{
+ 					switchAnimation = 2;
+ 				}
+@@ -131,12 +142,12 @@
+ 			else
+ 			{
+ 				switchAnimation = -1;
+-				GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion1, item1 );
+-				GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion2, item2 );
+-				GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion3, alterItem1 );
+-				GetWitcherPlayer().GetItemEquippedOnSlot( EES_Potion4, alterItem2 );
++				witcherPlayer.GetItemEquippedOnSlot( EES_Potion1, item1 );
++				witcherPlayer.GetItemEquippedOnSlot( EES_Potion2, item2 );
++				witcherPlayer.GetItemEquippedOnSlot( EES_Potion3, alterItem1 );
++				witcherPlayer.GetItemEquippedOnSlot( EES_Potion4, alterItem2 );
+ 			}
+-			runword6Applied = GetWitcherPlayer().HasRunewordActive('Runeword 6 _Stats');
++			runword6Applied = witcherPlayer.HasRunewordActive('Runeword 6 _Stats');
+ 			if (m_runword6Applied != runword6Applied)
+ 			{
+ 				m_runword6Applied = runword6Applied;
+@@ -146,14 +157,14 @@
+ 			{
+ 				forcedIconUpdate = false;
+ 			}
+-			UpdateItem( item0, m_currentItemSelected, m_currentItemSelectedAmmo, HudItemInfoBinding_item1, 0, forcedIconUpdate );
+-			UpdateItem( item1, m_currentItemOnSlot1,  m_currentItemOnSlot1Ammo, HudItemInfoBinding_potion1, 1, forcedIconUpdate );
+-			UpdateItem( item2, m_currentItemOnSlot2,  m_currentItemOnSlot2Ammo, HudItemInfoBinding_potion2, 2, forcedIconUpdate );
+-			UpdateItem( alterItem1, m_currentItemOnSlot3, m_currentItemOnSlot3Ammo, HudItemInfoBinding_potion3, 3, forcedIconUpdate );
+-			UpdateItem( alterItem2, m_currentItemOnSlot4, m_currentItemOnSlot4Ammo, HudItemInfoBinding_potion4, 4, forcedIconUpdate );
+-			if (switchAnimation != -1)
++			UpdateItem( item0,      m_currentItemSelected, m_currentItemSelectedAmmo, HudItemInfoBinding_item1,   0, forcedIconUpdate );
++			UpdateItem( item1,      m_currentItemOnSlot1,  m_currentItemOnSlot1Ammo,  HudItemInfoBinding_potion1, 1, forcedIconUpdate );
++			UpdateItem( item2,      m_currentItemOnSlot2,  m_currentItemOnSlot2Ammo,  HudItemInfoBinding_potion2, 2, forcedIconUpdate );
++			UpdateItem( alterItem1, m_currentItemOnSlot3,  m_currentItemOnSlot3Ammo,  HudItemInfoBinding_potion3, 3, forcedIconUpdate );
++			UpdateItem( alterItem2, m_currentItemOnSlot4,  m_currentItemOnSlot4Ammo,  HudItemInfoBinding_potion4, 4, forcedIconUpdate );
++			if ( switchAnimation != -1 )
+ 			{
+-				m_fxSwitchAnimation.InvokeSelfOneArg(FlashArgInt(switchAnimation));
++				m_fxSwitchAnimation.InvokeSelfOneArg( FlashArgInt( switchAnimation ) );
+ 			}
+ 		}
+ 		if ( thePlayer.IsCombatMusicEnabled() || thePlayer.GetHealthPercents() < 1.f )
+@@ -163,18 +174,23 @@
+ 	}
+ 	function GetCiriItem() : SItemUniqueId
+ 	{
++		var dummy : SItemUniqueId;
+ 		var ret : array<SItemUniqueId>;
+ 		ret = thePlayer.GetInventory().GetItemsByName('q403_ciri_meteor');
+-		return ret[0];
++		if ( ret.Size() )
++		{
++			return ret[0];
++		}
++		return dummy;
+ 	}
+ 	public function ResetItems()
+ 	{
+-		var invalidGUID 	: SItemUniqueId;
+-		m_currentItemSelected = invalidGUID;
+-		m_currentItemOnSlot1 = invalidGUID;
+-		m_currentItemOnSlot2 = invalidGUID;
+-		m_currentItemOnSlot3 = invalidGUID;
+-		m_currentItemOnSlot4 = invalidGUID;
++		var dummy : SItemUniqueId;
++		m_currentItemSelected = dummy;
++		m_currentItemOnSlot1  = dummy;
++		m_currentItemOnSlot2  = dummy;
++		m_currentItemOnSlot3  = dummy;
++		m_currentItemOnSlot4  = dummy;
+ 	}
+ 	public function UpdateItem( out currItem : SItemUniqueId, out prevItem : SItemUniqueId, out prevItemAmmo : int, bindingID : HudItemInfoBinding, slotId : int, optional forceUpdate:bool )
+ 	{
+@@ -260,6 +276,7 @@
+ 	}
+ 	public function UpdateItemData(item : SItemUniqueId, bindingID : HudItemInfoBinding)
+ 	{
++		var maxAmmo  : int;
+ 		var ammo : int;
+ 		var ammoStr : string;
+ 		var itemName : string;
+@@ -269,6 +286,8 @@
+ 		var btn:int;
+ 		var pcBtn : int;
+ 		var inventory : CInventoryComponent;
++		var currentShowButtonHints : bool;
++		var itemInfo : SHudItemInfo;
+ 		if( !thePlayer.GetInventory().IsIdValid( item ) )
+ 		{
+ 			icon = "";
+@@ -304,12 +323,20 @@
+ 			}
+ 			else if( inventory.IsItemSingletonItem(item) )
+ 			{
++				maxAmmo = thePlayer.inv.SingletonItemGetMaxAmmo(item);
+ 				ammo = thePlayer.inv.SingletonItemGetAmmo(item);
+-				if( ammo == 0 )
++				if (maxAmmo > 0)
+ 				{
+-					fontColor = "<font color=\"#FF0000\">";
++					if( ammo == 0 )
++					{
++						fontColor = "<font color=\"#FF0000\">";
++					}
++					ammoStr = fontColor + ammo + "/" + maxAmmo + "</font>";
++				}
++				else
++				{
++					ammoStr = "";
+ 				}
+-				ammoStr = fontColor+ammo+"/"+thePlayer.inv.SingletonItemGetMaxAmmo(item)+"</font>";
+ 			}
+ 			else
+ 			{
+@@ -338,9 +365,29 @@
+ 			itemName = fontColor+itemName + "</font>";
+ 			pcBtn = GetPCKeyByBinding( bindingID );
+ 			btn = GetKeyByBinding( bindingID );
+-			m_fxShowButtonHints.InvokeSelfOneArg( FlashArgBool( theInput.GetContext() == 'RadialMenu' ) );
++			currentShowButtonHints = ( theInput.GetContext() == 'RadialMenu' );
++			if ( m_previousShowButtonHints != (int)currentShowButtonHints )
++			{
++				m_previousShowButtonHints = (int)currentShowButtonHints;
++				m_fxShowButtonHints.InvokeSelfOneArg( FlashArgBool( currentShowButtonHints ) );
++			}
++		}
++		itemInfo = m_previousSetItemInfo[ bindingID ];
++		if ( itemInfo.m_icon     != icon ||
++			 itemInfo.m_category != category ||
++			 itemInfo.m_itemName != itemName ||
++			 itemInfo.m_ammoStr  != ammoStr ||
++			 itemInfo.m_btn      != btn ||
++			 itemInfo.m_pcBtn    != pcBtn )
++		{
++			m_previousSetItemInfo[ bindingID ].m_icon     = icon;
++			m_previousSetItemInfo[ bindingID ].m_category = category;
++			m_previousSetItemInfo[ bindingID ].m_itemName = itemName;
++			m_previousSetItemInfo[ bindingID ].m_ammoStr  = ammoStr;
++			m_previousSetItemInfo[ bindingID ].m_btn      = btn;
++			m_previousSetItemInfo[ bindingID ].m_pcBtn    = pcBtn;
++			m_fxSetItemInfo.InvokeSelfSevenArgs(FlashArgInt(bindingID), FlashArgString(icon), FlashArgString(category), FlashArgString(itemName), FlashArgString(ammoStr), FlashArgInt(btn), FlashArgInt(pcBtn));
+ 		}
+-		m_fxSetItemInfo.InvokeSelfSevenArgs(FlashArgInt(bindingID), FlashArgString(icon), FlashArgString(category), FlashArgString(itemName), FlashArgString(ammoStr), FlashArgInt(btn), FlashArgInt(pcBtn));
+ 	}
+ 	private function GetKeyByBinding(bindingName : HudItemInfoBinding) : int
+ 	{
+diff -ur scripts_1_11_decommented/game/gui/hud/modules/hudModuleRadialMenu.ws scripts_1_12_decommented/game/gui/hud/modules/hudModuleRadialMenu.ws
+--- scripts_1_11_decommented/game/gui/hud/modules/hudModuleRadialMenu.ws	2016-01-12 11:21:01.014478033 +0400
++++ scripts_1_12_decommented/game/gui/hud/modules/hudModuleRadialMenu.ws	2016-01-12 11:21:16.860248351 +0400
+@@ -175,7 +175,6 @@
+ 	}
+ 	event OnRadialMenu( action : SInputAction )
+ 	{
+-		var hud : CR4ScriptedHud;
+ 		if( IsPressed(action) )
+ 		{
+ 			if( m_shown )
+@@ -190,17 +189,13 @@
+ 			}
+ 			if ( theGame.IsDialogOrCutscenePlaying() || theGame.IsBlackscreenOrFading() || (!thePlayer.GetBIsInputAllowed() && !GetWitcherPlayer().IsUITakeInput()) )
+ 				return false;
+-			hud = (CR4ScriptedHud)theGame.GetHud();
+-			if ( hud && !hud.IsHudVisibilityAllowedByUser() )
+-			{
+-				return false;
+-			}
+ 			ShowRadialMenu();
+ 		}
+ 	}
+ 	function ShowRadialMenu()
+ 	{
+ 		var camera : CCustomCamera;
++		var hud : CR4ScriptedHud;
+ 		if( !m_shown && !theGame.IsDialogOrCutscenePlaying())
+ 		{
+ 			thePlayer.RestoreBlockedSlots();
+@@ -237,6 +232,11 @@
+ 				theGame.GetGuiManager().HideTutorial( true, false );
+ 				m_tutorialsHidden = true;
+ 			}
++			hud = (CR4ScriptedHud)theGame.GetHud();
++			if ( hud )
++			{
++				hud.OnRadialOpened();
++			}
+ 		}
+ 	}
+ 	private function SelectCurrentSign()
+@@ -258,6 +258,7 @@
+ 	function HideRadialMenu()
+ 	{
+ 		var camera : CCustomCamera;
++		var hud : CR4ScriptedHud;
+ 		if( m_shown )
+ 		{
+ 			theGame.ForceUIAnalog(false);
+@@ -275,6 +276,11 @@
+ 				theGame.GetTutorialSystem().uiHandler.OnClosedMenu('RadialMenu');
+ 			}
+ 			thePlayer.UnblockAction( EIAB_Jump, 'RadialMenu' );
++			hud = (CR4ScriptedHud)theGame.GetHud();
++			if ( hud )
++			{
++				hud.OnRadialClosed();
++			}
+ 		}
+ 	}
+ 	private function ResetItemsModule()
+diff -ur scripts_1_11_decommented/game/gui/main_menu/ingameMenu.ws scripts_1_12_decommented/game/gui/main_menu/ingameMenu.ws
+--- scripts_1_11_decommented/game/gui/main_menu/ingameMenu.ws	2016-01-12 11:20:59.692496058 +0400
++++ scripts_1_12_decommented/game/gui/main_menu/ingameMenu.ws	2016-01-12 11:21:15.741417278 +0400
+@@ -789,6 +789,10 @@
+ 		{
+ 			m_fxForceBackgroundVis.InvokeSelfOneArg(FlashArgBool(true));
+ 		}
++		if (groupName == 'Rendering' && optionName == 'PreserveSystemGamma')
++		{
++			theGame.GetGuiManager().DisplayRestartGameToApplyAllChanges();
++		}
+ 	}
+ 	protected function HandleSpecialValueChanged(optionName:name, optionValue:string):void
+ 	{
+@@ -1626,7 +1630,7 @@
+ 					iterator_KeybindKey = mInGameConfigWrapper.GetVarValue('PCInput', iterator_KeybindName);
+ 					iterator_KeybindKey = StrReplace(iterator_KeybindKey, ";IK_None", "");
+ 					iterator_KeybindKey = StrReplace(iterator_KeybindKey, "IK_None;", "");
+-					if (iterator_KeybindKey == newSettingString &&
++					if (iterator_KeybindKey == newSettingString && iterator_KeybindName != keybindTag &&
+ 						(currentBindingTag == '' || currentBindingTag != GetKeybindGroupTag(iterator_KeybindName)))
+ 					{
+ 						if (keybindChangedMessage != "")
+diff -ur scripts_1_11_decommented/game/gui/menus/alchemyMenu.ws scripts_1_12_decommented/game/gui/menus/alchemyMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/alchemyMenu.ws	2016-01-12 11:20:59.912659596 +0400
++++ scripts_1_12_decommented/game/gui/menus/alchemyMenu.ws	2016-01-12 11:21:15.959579330 +0400
+@@ -161,6 +161,7 @@
+ 		LogChannel( 'Alchemy', "OnCreateItem - " + recipeIndex + " " + recipe.recipeName );
+ 		if( bCouldCraft )
+ 		{
++			GetWitcherPlayer().StartInvUpdateTransaction();
+ 			exception = m_alchemyManager.CanCookRecipe( recipe.recipeName );
+ 			if( exception == EAE_NoException )
+ 			{
+@@ -175,6 +176,7 @@
+ 				showNotification(GetLocStringByKeyExt("panel_crafting_successfully_crafted") + ": " + cookedItemName);
+ 				OnPlaySoundEvent("gui_crafting_craft_item_complete");
+ 			}
++			GetWitcherPlayer().FinishInvUpdateTransaction();
+ 		}
+ 		if (exception != EAE_NoException)
+ 		{
+@@ -195,6 +197,7 @@
+ 		var l_GroupTag				: name;
+ 		var l_IsNew					: bool;
+ 		var canCraftResult			: EAlchemyExceptions;
++		var canCraftResultFilters	: EAlchemyExceptions;
+ 		var cookableType			: EAlchemyCookedItemType;
+ 		var cookable				: SCookable;
+ 		var cookables				: array<SCookable>;
+@@ -235,6 +238,7 @@
+ 			l_IsNew	= false;
+ 			l_Tag = recipe.recipeName;
+ 			canCraftResult = m_alchemyManager.CanCookRecipe(recipe.recipeName);
++			canCraftResultFilters = m_alchemyManager.CanCookRecipe(recipe.recipeName, true);
+ 			cookableCount = 0;
+ 			for(j=0; j<cookables.Size(); j+=1)
+ 			{
+@@ -271,6 +275,7 @@
+ 			}
+ 			l_DataFlashObject.SetMemberFlashBool( "isSchematic", false );
+ 			l_DataFlashObject.SetMemberFlashInt( "canCookStatus", canCraftResult);
++			l_DataFlashObject.SetMemberFlashInt( "canCookStatusForFilter", canCraftResultFilters);
+ 			l_DataFlashArray.PushBackFlashObject(l_DataFlashObject);
+ 		}
+ 		if( l_DataFlashArray.GetLength() > 0 )
+diff -ur scripts_1_11_decommented/game/gui/menus/blacksmithMenu.ws scripts_1_12_decommented/game/gui/menus/blacksmithMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/blacksmithMenu.ws	2016-01-12 11:21:00.257916054 +0400
++++ scripts_1_12_decommented/game/gui/menus/blacksmithMenu.ws	2016-01-12 11:21:16.293827611 +0400
+@@ -344,6 +344,11 @@
+ 		var itemsAdded			: array<SItemUniqueId>;
+ 		var itemsToUpdate		: array<SItemUniqueId>;
+ 		var curPart				: SItemUniqueId;
++		if (m_lastConfirmedDisassembleQuantity < 1)
++		{
++			OnPlaySoundEvent( "gui_global_denied" );
++			return 0;
++		}
+ 		itemsListText = "<font face=\"$BoldFont\">" + GetLocStringByKeyExt("panel_blacksmith_items_removed") + ": </font>";
+ 		itemsListText += "<br/>" + (GetLocStringByKeyExt(_inv.GetItemLocalizedNameByUniqueID(item)) + " x" + m_lastConfirmedDisassembleQuantity);
+ 		partList = _inv.GetItemRecyclingParts(item);
+@@ -353,6 +358,7 @@
+ 			partList[idx].quantity = _inv.GetItemQuantityByName(partList[idx].itemName);
+ 		}
+ 		itemsListText += "<br/>" + "<font face=\"$BoldFont\">" + GetLocStringByKeyExt("panel_blacksmith_items_added") + ": </font>";
++		GetWitcherPlayer().StartInvUpdateTransaction();
+ 		_fixerInventory.AddMoney(price * m_lastConfirmedDisassembleQuantity);
+ 		_inv.RemoveMoney(price * m_lastConfirmedDisassembleQuantity);
+ 		if ( _inv.GetItemEnhancementCount(item) > 0 )
+@@ -416,8 +422,10 @@
+ 		{
+ 			UpdateItemsList(itemsToUpdate);
+ 		}
++		GetWitcherPlayer().FinishInvUpdateTransaction();
+ 		UpdatePlayerMoney();
+ 		UpdateMerchantData();
++		UpdateItemsCounter();
+ 		theSound.SoundEvent( 'gui_inventory_buy' );
+ 	}
+ 	event  OnStartCrafting()
+diff -ur scripts_1_11_decommented/game/gui/menus/craftingMenu.ws scripts_1_12_decommented/game/gui/menus/craftingMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/craftingMenu.ws	2016-01-12 11:21:00.331971063 +0400
++++ scripts_1_12_decommented/game/gui/menus/craftingMenu.ws	2016-01-12 11:21:16.360877416 +0400
+@@ -98,7 +98,9 @@
+ 	}
+ 	event  OnCraftItem( tag : name )
+ 	{
++		GetWitcherPlayer().StartInvUpdateTransaction();
+ 		CreateItem(tag);
++		GetWitcherPlayer().FinishInvUpdateTransaction();
+ 	}
+ 	event  OnEntryPress( tag : name )
+ 	{
+diff -ur scripts_1_11_decommented/game/gui/menus/gwintGameMenu.ws scripts_1_12_decommented/game/gui/menus/gwintGameMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/gwintGameMenu.ws	2016-01-12 11:21:00.686234212 +0400
++++ scripts_1_12_decommented/game/gui/menus/gwintGameMenu.ws	2016-01-12 11:21:16.542011964 +0400
+@@ -73,6 +73,7 @@
+ 		}
+ 		SendDecksInformation();
+ 		theSound.EnterGameState( ESGS_Gwent );
++		theTelemetry.LogWithName( TE_HERO_GWENT_MATCH_STARTED );
+ 	}
+ 	event  OnClosingMenu()
+ 	{
+@@ -84,10 +85,12 @@
+ 			if (playerWon)
+ 			{
+ 				thePlayer.SetGwintMinigameState( EMS_End_PlayerWon );
++				theTelemetry.LogWithValue( TE_HERO_GWENT_MATCH_ENDED, 1 );
+ 			}
+ 			else
+ 			{
+ 				thePlayer.SetGwintMinigameState( EMS_End_PlayerLost );
++				theTelemetry.LogWithValue( TE_HERO_GWENT_MATCH_ENDED, 0 );
+ 			}
+ 		}
+ 		if (chooseTurnPopup)
+diff -ur scripts_1_11_decommented/game/gui/menus/inventoryMenu.ws scripts_1_12_decommented/game/gui/menus/inventoryMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/inventoryMenu.ws	2016-01-12 11:21:00.119813471 +0400
++++ scripts_1_12_decommented/game/gui/menus/inventoryMenu.ws	2016-01-12 11:21:16.156725772 +0400
+@@ -198,6 +198,7 @@
+ 				theGame.GetTutorialSystem().uiHandler.OnOpeningMenu('ShopMenu');
+ 			}
+ 			l_craftIngredientsList = UpdatePinnedCraftingItemInfo();
++			_shopInv.highlightItems(l_craftIngredientsList);
+ 		}
+ 		else if( l_containerNpc )
+ 		{
+@@ -1554,6 +1555,7 @@
+ 					{
+ 						InventoryRemoveItem(item, true);
+ 						InventoryUpdateItem(itemOnSlot);
++						itemAlreadyEuipped = true;
+ 					}
+ 					else
+ 					{
+@@ -1567,9 +1569,9 @@
+ 				else
+ 				{
+ 					PlayItemEquipSound( _inv.GetItemCategory(item) );
++					itemAlreadyEuipped = GetWitcherPlayer().IsItemEquipped(item);
++					_playerInv.EquipItem( item, slot );
+ 				}
+-				itemAlreadyEuipped = GetWitcherPlayer().IsItemEquipped(item);
+-				_playerInv.EquipItem( item, slot );
+ 				UpdatePlayerStatisticsData();
+ 				((CActor)m_player).SetBehaviorMimicVariable( 'gameplayMimicsMode', (float)(int)PGMM_Inventory );
+ 				switch (_inv.GetItemCategory( item ))
+diff -ur scripts_1_11_decommented/game/gui/menus/journalQuestMenu.ws scripts_1_12_decommented/game/gui/menus/journalQuestMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/journalQuestMenu.ws	2016-01-12 11:21:00.675226035 +0400
++++ scripts_1_12_decommented/game/gui/menus/journalQuestMenu.ws	2016-01-12 11:21:16.531003787 +0400
+@@ -35,6 +35,7 @@
+ 		m_fxSetExpansionTexture = m_flashModule.GetMemberFlashFunction("setExpansionTexture");
+ 		m_fxUpdateExpansionIcon = m_flashModule.GetMemberFlashFunction("updateExpansionIcon");
+ 		m_fxSetExpansionTexture.InvokeSelfTwoArgs( FlashArgInt( 1 ), FlashArgString( GetEpTextureName( 1 ) ) );
++		m_fxSetExpansionTexture.InvokeSelfTwoArgs( FlashArgInt( 2 ), FlashArgString( GetEpTextureName( 2 ) ) );
+ 		GetQuests();
+ 		PopulateData();
+ 		SelectCurrentModule();
+@@ -414,6 +415,23 @@
+ 					break;
+ 			}
+ 		}
++		else if ( epIndex == 2 )
++		{
++			switch(type)
++			{
++				case Story :
++				case Chapter :
++				case Side :
++					retStr += "quest_baw.png";
++					break;
++				case MonsterHunt :
++					retStr += "monsterhunt_baw.png";
++					break;
++				case TreasureHunt :
++					retStr += "treasurehunt_baw.png";
++					break;
++			}
++		}
+ 		return retStr;
+ 	}
+ 	function UpdateObjectives( tag : name )
+diff -ur scripts_1_11_decommented/game/gui/menus/mapMenu.ws scripts_1_12_decommented/game/gui/menus/mapMenu.ws
+--- scripts_1_11_decommented/game/gui/menus/mapMenu.ws	2016-01-12 11:21:00.741275096 +0400
++++ scripts_1_12_decommented/game/gui/menus/mapMenu.ws	2016-01-12 11:21:16.589046902 +0400
+@@ -21,6 +21,7 @@
+ 	private var m_fxEnableManualLod : CScriptedFlashFunction;
+ 	private var m_fxShowBorders : CScriptedFlashFunction;
+ 	private var m_fxSetDefaultPosition : CScriptedFlashFunction;
++	private var m_fxShowToussaint : CScriptedFlashFunction;
+ 	var currentTag			: name;
+ 	event  OnConfigUI()
+ 	{
+@@ -50,6 +51,7 @@
+ 		m_fxEnableManualLod            = m_flashModule.GetMemberFlashFunction( "EnableManualLod" );
+ 		m_fxShowBorders                = m_flashModule.GetMemberFlashFunction( "ShowBorders" );
+ 		m_fxSetDefaultPosition         = m_flashModule.GetMemberFlashFunction( "setDefaultMapPostion" );
++		m_fxShowToussaint              = m_flashModule.GetMemberFlashFunction( "ShowToussaint" );
+ 		Initialize();
+ 		UpdateActiveAreas();
+ 		SelectCurrentModule();
+@@ -58,6 +60,7 @@
+ 		{
+ 			SetMenuState('GlobalMap');
+ 		}
++		m_fxShowToussaint.InvokeSelfOneArg( FlashArgBool( theGame.GetDLCManager().IsEP2Available() ) );
+ 	}
+ 	protected function GetSavedDataMenuName() : name
+ 	{
+@@ -137,7 +140,6 @@
+ 		{
+ 			UpdatePlayerPin( l_flashArray );
+ 		}
+-		GetMenuFlashValueStorage().SetFlashNumber( "worldmap.player.posZ", playerPos.Z );
+ 		LogChannel( 'MapTimer', "UpdateData MIDDLE1" );
+ 		if (!ignoreSelectionChange)
+ 		{
+@@ -187,8 +189,6 @@
+ 		l_flashObject.SetMemberFlashInt(    "journalAreaId", commonMapManager.GetJournalAreaByPosition( m_shownArea, position ) );
+ 		l_flashObject.SetMemberFlashNumber( "posX",     position.X );
+ 		l_flashObject.SetMemberFlashNumber( "posY",     position.Y );
+-		l_flashObject.SetMemberFlashNumber( "posZ",     position.Z );
+-		l_flashObject.SetMemberFlashBool(   "enabled",  false );
+ 		if ( (W3ReplacerCiri)thePlayer )
+ 		{
+ 			l_flashObject.SetMemberFlashString( "description", GetLocStringByKeyExt( "map_description_player_ciri"));
+@@ -228,8 +228,6 @@
+ 		l_flashObject.SetMemberFlashUInt(   "id",       NameToFlashUInt( 'User' ) );
+ 		l_flashObject.SetMemberFlashNumber( "posX",     position.X );
+ 		l_flashObject.SetMemberFlashNumber( "posY",     position.Y );
+-		l_flashObject.SetMemberFlashNumber( "posZ",     position.Z );
+-		l_flashObject.SetMemberFlashBool(   "enabled",  false );
+ 		l_flashObject.SetMemberFlashString( "description", GetLocStringByKeyExt( "map_description_user"));
+ 		l_flashObject.SetMemberFlashString( "label", 	GetLocStringByKeyExt( "map_location_user"));
+ 		l_flashObject.SetMemberFlashString( "type",     NameToString( 'User' ) );
+@@ -265,6 +263,7 @@
+ 		m_flashValueStorage.SetFlashBool("universearea.wyzima.active", availableAreas[AN_Wyzima]);
+ 		m_flashValueStorage.SetFlashBool("universearea.prologvillage.active", availableAreas[AN_Prologue_Village]);
+ 		m_flashValueStorage.SetFlashBool("universearea.skellige.active", availableAreas[AN_Skellige_ArdSkellig]);
++		m_flashValueStorage.SetFlashBool("universearea.toussaint.active", availableAreas[AN_Dlc_Bob]);
+ 	}
+ 	function UpdateEntityPins( out flashArray : CScriptedFlashArray ) : void
+ 	{
+@@ -274,7 +273,6 @@
+ 		var pin						: SCommonMapPinInstance;
+ 		var i						: int;
+ 		var l_flashObject			: CScriptedFlashObject;
+-		var currentPinTag 			: name;
+ 		var filterCheck				: bool;
+ 		var filterType				: name;
+ 		var canShowKnownEntities	: bool;
+@@ -341,9 +339,6 @@
+ 				l_flashObject.SetMemberFlashInt(    "journalAreaId", commonMapManager.GetJournalAreaByPosition( m_shownArea, pin.position ) );
+ 				l_flashObject.SetMemberFlashNumber( "posX",     pin.position.X );
+ 				l_flashObject.SetMemberFlashNumber( "posY",     pin.position.Y );
+-				l_flashObject.SetMemberFlashNumber( "posZ",     pin.position.Z );
+-				l_flashObject.SetMemberFlashUInt(   "pinTag",      NameToFlashUInt( pin.tag ) );
+-				l_flashObject.SetMemberFlashBool(   "enabled",  ( pin.type == 'RoadSign' ) || ( pin.type == 'Harbor' ));
+ 				l_flashObject.SetMemberFlashString( "type",     NameToString( pin.visibleType ) );
+ 				l_flashObject.SetMemberFlashNumber( "radius",	pin.visibleRadius );
+ 				l_flashObject.SetMemberFlashBool(   "isQuest",	commonMapManager.IsQuestType( pin.type ) );
+@@ -385,8 +380,6 @@
+ 					label = GetLocStringById( curQuest.GetTitleStringId() );
+ 					description = GetLocStringById( curObjective.GetTitleStringId() );
+ 					isTracked = journalManager.GetTrackedQuest().guid == curQuest.guid;
+-					dataObject.SetMemberFlashUInt( "questTag",     NameToFlashUInt( curQuest.GetUniqueScriptTag() ) );
+-					dataObject.SetMemberFlashUInt( "objectiveTag", NameToFlashUInt( curObjective.GetUniqueScriptTag() ) );
+ 					dataObject.SetMemberFlashBool( "tracked",      isTracked );
+ 					dataObject.SetMemberFlashBool( "highlighted",  targetPin.isHighlighted );
+ 				}
+@@ -396,6 +389,7 @@
+ 			case 'Teleport':
+ 			case 'QuestAvailable':
+ 			case 'QuestAvailableHoS':
++			case 'QuestAvailableBaW':
+ 			case 'MagicLamp':
+ 			case 'Whetstone':
+ 			case 'Entrance':
+@@ -544,9 +538,6 @@
+ 		areaType = AreaNameToType( areaName );
+ 		SwitchToHubMap(areaType);
+ 	}
+-	event  OnGetMappointData( pinTag : name )
+-	{
+-	}
+ 	private function AddUniquePinTypeFilter(pinType:name):void
+ 	{
+ 		var len, i 	   : int;
+@@ -697,230 +688,6 @@
+ 		}
+ 		UpdateData(true);
+ 	}
+-	event  OnRequestFastTravelData()
+-	{
+-		requestFastTravelData();
+-	}
+-	event  OnRequestObjectivesMappins()
+-	{
+-		requestObjectivesMappins();
+-	}
+-	private function requestFastTravelData():void
+-	{
+-		var manager			: CCommonMapManager = theGame.GetCommonMapManager();
+-		var pinsList 	    : array< SAvailableFastTravelMapPin >;
+-		var curPin			: SAvailableFastTravelMapPin;
+-		var l_flashObject	: CScriptedFlashObject;
+-		var l_flashArray 	: CScriptedFlashArray;
+-		var i		 		: int;
+-		var initData		: W3MapInitData;
+-		var isSailing		: bool;
+-		var areaName		: name;
+-		isSailing = false;
+-		initData = (W3MapInitData)GetMenuInitData();
+-		if ( initData )
+-		{
+-			isSailing = initData.GetIsSailing();
+-		}
+-		pinsList = manager.GetFastTravelPoints(true, true, isSailing, !isSailing );
+-		l_flashArray = m_flashValueStorage.CreateTempFlashArray();
+-		for ( i = 0; i < pinsList.Size(); i += 1 )
+-		{
+-			curPin = pinsList[i];
+-			if ( m_currentArea == AN_Prologue_Village_Winter && curPin.area != AN_Prologue_Village_Winter )
+-			{
+-				continue;
+-			}
+-			if ( m_currentArea != AN_Prologue_Village_Winter && curPin.area == AN_Prologue_Village_Winter )
+-			{
+-				continue;
+-			}
+-			areaName = manager.GetLocalisationNameFromAreaType( curPin.area );
+-			l_flashObject = m_flashValueStorage.CreateTempFlashObject();
+-			l_flashObject.SetMemberFlashUInt("id", NameToFlashUInt(curPin.tag));
+-			l_flashObject.SetMemberFlashUInt("areaId", curPin.area);
+-			l_flashObject.SetMemberFlashUInt("pinTag", NameToFlashUInt(curPin.tag));
+-			l_flashObject.SetMemberFlashString("tag", curPin.tag);
+-			l_flashObject.SetMemberFlashString("area", AreaTypeToName(curPin.area));
+-			l_flashObject.SetMemberFlashString("label", GetLocStringByKeyExt( StrLower("map_location_"+curPin.tag)));
+-			l_flashObject.SetMemberFlashBool("selected", (currentTag == curPin.tag));
+-			l_flashObject.SetMemberFlashString("description", GetLocStringByKeyExt( StrLower("map_description_"+curPin.tag)));
+-			l_flashObject.SetMemberFlashString("enabled", curPin.type);
+-			l_flashObject.SetMemberFlashString("dropDownLabel", GetLocStringByKeyExt( areaName ) );
+-			l_flashObject.SetMemberFlashUInt( "dropDownTag",  NameToFlashUInt( areaName ) );
+-			l_flashObject.SetMemberFlashBool( "dropDownOpened", IsCategoryOpened( areaName ) );
+-			l_flashArray.PushBackFlashObject(l_flashObject);
+-		}
+-		m_flashValueStorage.SetFlashArray( "map.pins.list", l_flashArray );
+-	}
+-	private function requestObjectivesMappins():void
+-	{
+-		var l_flashArray 	: CScriptedFlashArray;
+-		l_flashArray = m_flashValueStorage.CreateTempFlashArray();
+-		GetQuestMappins(l_flashArray);
+-		m_flashValueStorage.SetFlashArray( "map.pins.list", l_flashArray );
+-	}
+-	protected function GetQuestMappins(out flashArray : CScriptedFlashArray):void
+-	{
+-		var journalManager    : CWitcherJournalManager;
+-		var currentQuest      : CJournalQuest;
+-		var currentPhase	  : CJournalQuestPhase;
+-		var currentObjective  : CJournalQuestObjective;
+-		var questsList        : array<CJournalBase>;
+-		var questPinsList	  : array<SCommonMapPinInstance>;
+-		var questsCount, qIdx : int;
+-		var phaseCount, pIdx  : int;
+-		var objCount, oIdx    : int;
+-		var currentAreaId	  : int;
+-		var worldPath		  : string;
+-		var setSelection	  : bool;
+-		var mapManager 		  : CCommonMapManager;
+-		mapManager = theGame.GetCommonMapManager();
+-		journalManager = theGame.GetJournalManager();
+-		journalManager.GetActivatedOfType( 'CJournalQuest', questsList );
+-		questsCount = questsList.Size();
+-		for (qIdx = 0; qIdx < questsCount; qIdx+=1)
+-		{
+-			currentQuest = (CJournalQuest)questsList[qIdx];
+-			if (currentQuest && journalManager.GetEntryStatus(currentQuest) == JS_Active)
+-			{
+-				if ( currentAreaId == m_currentArea && !setSelection)
+-				{
+-					setSelection = true;
+-					InsertQuestMappinGroup(flashArray, currentQuest, true);
+-				}
+-				else
+-				{
+-					InsertQuestMappinGroup(flashArray, currentQuest, false);
+-				}
+-				phaseCount = currentQuest.GetNumChildren();
+-				for( pIdx = 0; pIdx < phaseCount; pIdx += 1)
+-				{
+-					currentPhase = (CJournalQuestPhase) currentQuest.GetChild(pIdx);
+-					if(currentPhase)
+-					{
+-						objCount = currentPhase.GetNumChildren();
+-						for(oIdx = 0;  oIdx < objCount; oIdx += 1 )
+-						{
+-							currentObjective = (CJournalQuestObjective) currentPhase.GetChild(oIdx);
+-							if (currentObjective && journalManager.GetEntryStatus(currentObjective) == JS_Active)
+-							{
+-								currentAreaId = currentObjective.GetWorld();
+-								worldPath = mapManager.GetWorldPathFromAreaType( currentAreaId );
+-								questPinsList = mapManager.GetMapPinInstances(worldPath);
+-								InsertQuestObjectiveMappins(flashArray, currentQuest, currentObjective, questPinsList, currentAreaId);
+-							}
+-						}
+-					}
+-				}
+-			}
+-		}
+-	}
+-	protected function InsertQuestMappinGroup(out targetContainer:CScriptedFlashArray, targetQuest:CJournalQuest, selected:bool):void
+-	{
+-		var journalManager : CWitcherJournalManager;
+-		var tmpGFxObject   : CScriptedFlashObject;
+-		var questStatus  : EJournalStatus;
+-		var questAreaId	 : int;
+-		var questArea	 : string;
+-		var questTitle	 : string;
+-		var questTag	 : name;
+-		var groupTag	 : name;
+-		var isActive	 : bool;
+-		var isTracked	 : bool;
+-		var isStory		 : bool;
+-		journalManager = theGame.GetJournalManager();
+-		questAreaId = targetQuest.GetWorld();
+-		groupTag = GetAreaName(questAreaId);
+-		questArea = GetLocStringByKeyExt(groupTag);
+-		questTitle = GetLocStringById(targetQuest.GetTitleStringId());
+-		questTag = targetQuest.GetUniqueScriptTag();
+-		questStatus = journalManager.GetEntryStatus(targetQuest);
+-		isActive = journalManager.GetEntryStatus(targetQuest) == JS_Active;
+-		isTracked = journalManager.GetTrackedQuest().guid == targetQuest.guid;
+-		isStory	= targetQuest.GetType() == 0;
+-		tmpGFxObject = m_flashValueStorage.CreateTempFlashObject();
+-		tmpGFxObject.SetMemberFlashUInt("tag", NameToFlashUInt(questTag));
+-		tmpGFxObject.SetMemberFlashUInt("areaId", questAreaId );
+-		tmpGFxObject.SetMemberFlashUInt("status", questStatus );
+-		tmpGFxObject.SetMemberFlashBool("selected", ( questTag == currentTag ));
+-		tmpGFxObject.SetMemberFlashString("dropDownLabel", questArea);
+-		tmpGFxObject.SetMemberFlashUInt( "dropDownTag",  NameToFlashUInt(groupTag) );
+-		tmpGFxObject.SetMemberFlashBool( "dropDownOpened", IsCategoryOpened( groupTag ) );
+-		tmpGFxObject.SetMemberFlashString("label", questTitle);
+-		tmpGFxObject.SetMemberFlashBool("tracked", isActive && isTracked);
+-		tmpGFxObject.SetMemberFlashBool("isStory", isStory);
+-		tmpGFxObject.SetMemberFlashBool("isGroupItem", true);
+-		targetContainer.PushBackFlashObject(tmpGFxObject);
+-	}
+-	protected function InsertQuestObjectiveMappins(out targetContainer:CScriptedFlashArray, targetQuest:CJournalQuest, targetObjective:CJournalQuestObjective, commonMappins:array<SCommonMapPinInstance>, area:int):void
+-	{
+-		var journalManager     : CWitcherJournalManager;
+-		var currentMappin	   : CJournalQuestMapPin;
+-		var objStatus		   : EJournalStatus;
+-		var objectiveGFxObject : CScriptedFlashObject;
+-		var mappinsGFxObject   : CScriptedFlashObject;
+-		var mappinsGFxArray    : CScriptedFlashArray;
+-		var currentLabel	   : string;
+-		var pinsCount, pinIdx  : int;
+-		var objTag			   : name;
+-		var isTracked	 	   : bool;
+-		var isTrackable		   : bool;
+-		var highlightedObjective			: CJournalQuestObjective;
+-		journalManager = theGame.GetJournalManager();
+-		highlightedObjective = journalManager.GetHighlightedObjective();
+-		objectiveGFxObject = m_flashValueStorage.CreateTempFlashObject();
+-		mappinsGFxArray = m_flashValueStorage.CreateTempFlashArray();
+-		currentLabel = GetLocStringById(targetObjective.GetTitleStringId());
+-		objStatus = journalManager.GetEntryStatus(targetObjective);
+-		objTag = targetObjective.GetUniqueScriptTag();
+-		isTracked = ( highlightedObjective  == targetObjective );
+-		objectiveGFxObject.SetMemberFlashUInt("tag", NameToFlashUInt(objTag));
+-		objectiveGFxObject.SetMemberFlashInt("status", objStatus);
+-		objectiveGFxObject.SetMemberFlashString("label", currentLabel);
+-		objectiveGFxObject.SetMemberFlashString("dropDownLabel", GetAreaName(area));
+-		objectiveGFxObject.SetMemberFlashBool("isGroupItem", false);
+-		objectiveGFxObject.SetMemberFlashBool("tracked", isTracked);
+-		pinsCount = targetObjective.GetNumChildren();
+-		for(pinIdx = 0; pinIdx < pinsCount; pinIdx += 1 )
+-		{
+-			currentMappin = (CJournalQuestMapPin) targetObjective.GetChild(pinIdx);
+-			if (currentMappin)
+-			{
+-				mappinsGFxObject = GetQuestMappinData(currentMappin.GetMapPinID(), commonMappins);
+-				if (mappinsGFxObject)
+-				{
+-					mappinsGFxObject.SetMemberFlashString("label", GetLocStringById( targetQuest.GetTitleStringId() ));
+-					mappinsGFxObject.SetMemberFlashString("description", GetLocStringById( targetObjective.GetTitleStringId()));
+-					mappinsGFxObject.SetMemberFlashUInt("areaId", area );
+-					mappinsGFxObject.SetMemberFlashString("area", GetLocStringByKeyExt(GetAreaName(area)));
+-					mappinsGFxArray.PushBackFlashObject(mappinsGFxObject);
+-				}
+-			}
+-		}
+-		objectiveGFxObject.SetMemberFlashArray("mappinsList", mappinsGFxArray);
+-		targetContainer.PushBackFlashObject(objectiveGFxObject);
+-	}
+-	protected function GetQuestMappinData(mapPinTag:name, commonMappins:array<SCommonMapPinInstance>):CScriptedFlashObject
+-	{
+-		var tmpGFxObject : CScriptedFlashObject;
+-		var curPin : SCommonMapPinInstance;
+-		var pinsCount, i : int;
+-		pinsCount = commonMappins.Size();
+-		for (i = 0; i < pinsCount; i+=1 )
+-		{
+-			curPin = commonMappins[i];
+-			if (curPin.tag == mapPinTag)
+-			{
+-				tmpGFxObject = m_flashValueStorage.CreateTempFlashObject();
+-				tmpGFxObject.SetMemberFlashUInt("id", NameToFlashUInt(curPin.tag));
+-				tmpGFxObject.SetMemberFlashUInt("pinTag", NameToFlashUInt(curPin.tag));
+-				tmpGFxObject.SetMemberFlashString("tag", curPin.tag);
+-				return tmpGFxObject;
+-			}
+-		}
+-		return NULL;
+-	}
+ 	function GetAreaDefaultPosition( areaId : int, out x : float, out y : float ) : void
+ 	{
+ 		switch ( areaId )
+@@ -938,39 +705,6 @@
+ 				y = -1;
+ 		}
+ 	}
+-	function GetAreaName( areaId : int ) : name
+-	{
+-		var l_questArea : name;
+-		switch ( areaId )
+-		{
+-			case AN_Undefined:
+-				l_questArea = 'panel_journal_filters_area_any';
+-				break;
+-			case AN_NMLandNovigrad:
+-				l_questArea = 'panel_journal_filters_area_no_mans_land';
+-				break;
+-			case AN_Skellige_ArdSkellig:
+-				l_questArea = 'panel_journal_filters_area_skellige';
+-				break;
+-			case AN_Kaer_Morhen:
+-				l_questArea = 'panel_journal_filters_area_kaer_morhen';
+-				break;
+-			case AN_Prologue_Village:
+-				l_questArea = 'panel_journal_filters_area_prolgue_village';
+-				break;
+-			case AN_Wyzima:
+-				break;
+-			case AN_Island_of_Myst:
+-				break;
+-			case AN_Spiral:
+-				break;
+-			case AN_Prologue_Village_Winter:
+-				break;
+-			case AN_Velen:
+-				break;
+-		}
+-		return l_questArea;
+-	}
+ 	event OnHighlightObjective( tag : name )
+ 	{
+ 		var l_objective						: CJournalQuestObjective;
+diff -ur scripts_1_11_decommented/game/gui/menus/menuBase.ws scripts_1_12_decommented/game/gui/menus/menuBase.ws
+--- scripts_1_11_decommented/game/gui/menus/menuBase.ws	2016-01-12 11:21:00.382008231 +0400
++++ scripts_1_12_decommented/game/gui/menus/menuBase.ws	2016-01-12 11:21:16.410914584 +0400
+@@ -86,6 +86,7 @@
+ 		SetControllerType(theInput.LastUsedGamepad());
+ 		SetPlatformType(theGame.GetPlatform());
+ 		UpdateAcceptCancelSwaping();
++		UpdateInputDeviceType();
+ 		PlayOpenSoundEvent();
+ 		m_defaultInputBindings.Clear();
+ 		SetButtons();
+@@ -182,6 +183,15 @@
+ 			m_fxSwapAcceptCancel.InvokeSelfOneArg( FlashArgBool(configValue) );
+ 		}
+ 	}
++	protected function UpdateInputDeviceType():void
++	{
++		var deviceType : EInputDeviceType;
++		if (m_fxSetGamepadType)
++		{
++			deviceType = theInput.GetLastUsedGamepadType();
++			m_fxSetGamepadType.InvokeSelfOneArg( FlashArgUInt(deviceType) );
++		}
++	}
+ 	protected function UpdateControlSchemeLock():void
+ 	{
+ 		if (m_fxLockControlScheme && m_guiManager)
+diff -ur scripts_1_11_decommented/game/gui/_old/components/guiBaseInventoryComponent.ws scripts_1_12_decommented/game/gui/_old/components/guiBaseInventoryComponent.ws
+--- scripts_1_11_decommented/game/gui/_old/components/guiBaseInventoryComponent.ws	2016-01-12 11:21:01.416776862 +0400
++++ scripts_1_12_decommented/game/gui/_old/components/guiBaseInventoryComponent.ws	2016-01-12 11:21:17.305579145 +0400
+@@ -225,6 +225,7 @@
+ 		var equipped : int;
+ 		var isQuest	 : bool;
+ 		var canDrop	 : bool;
++		var maxAmmo  : int;
+ 		var charges  : string;
+ 		var cantEquip : bool;
+ 		var weight : float;
+@@ -250,9 +251,17 @@
+ 		{
+ 			if(_inv.IsItemSingletonItem(item))
+ 			{
+-				charges = thePlayer.inv.SingletonItemGetAmmo(item) + "/" + thePlayer.inv.SingletonItemGetMaxAmmo(item);
+-				flashObject.SetMemberFlashString( "charges",  charges);
++				maxAmmo = thePlayer.inv.SingletonItemGetMaxAmmo(item);
++				if (maxAmmo > 0)
++				{
++					charges = thePlayer.inv.SingletonItemGetAmmo(item) + "/" + thePlayer.inv.SingletonItemGetMaxAmmo(item);
++				}
++				else
++				{
++					charges = "";
++				}
+ 				quantity = 1;
++				flashObject.SetMemberFlashString( "charges",  charges);
+ 				flashObject.SetMemberFlashInt( "quantity", quantity);
+ 			}
+ 			else
+@@ -315,7 +324,8 @@
+ 		if( _inv.HasItemDurability(item) )
+ 		{
+ 			curr = RoundMath( _inv.GetItemDurability(item) / _inv.GetItemMaxDurability(item) * 100);
+-			if(curr <= ITEM_NEED_REPAIR_DISPLAY_VALUE )
++			flashObject.SetMemberFlashNumber( "durability", curr );
++			if( curr <= ITEM_NEED_REPAIR_DISPLAY_VALUE )
+ 			{
+ 				flashObject.SetMemberFlashBool( "needRepair", true );
+ 			}
+@@ -327,6 +337,7 @@
+ 		else
+ 		{
+ 			flashObject.SetMemberFlashBool( "needRepair", false );
++			flashObject.SetMemberFlashNumber( "durability", 1);
+ 		}
+ 		if( thePlayer.IsInCombatAction() && IsUnequipSwordIsAlllowed(item))
+ 		{
+@@ -336,7 +347,14 @@
+ 		{
+ 			flashObject.SetMemberFlashInt( "actionType", GetItemActionType( item ) );
+ 		}
+-		cantEquip = _inv.GetItemLevel(item) > thePlayer.GetLevel();
++		if(thePlayer.HasBuff(EET_WolfHour))
++		{
++			cantEquip = (_inv.GetItemLevel(item) - 2) > thePlayer.GetLevel();
++		}
++		else
++		{
++			cantEquip = _inv.GetItemLevel(item) > thePlayer.GetLevel();
++		}
+ 		flashObject.SetMemberFlashBool( "cantEquip", cantEquip );
+ 		flashObject.SetMemberFlashString( "category", _inv.GetItemCategory(item) );
+ 	}
+diff -ur scripts_1_11_decommented/game/gui/popups/LootPopup.ws scripts_1_12_decommented/game/gui/popups/LootPopup.ws
+--- scripts_1_11_decommented/game/gui/popups/LootPopup.ws	2016-01-12 11:20:59.808582287 +0400
++++ scripts_1_12_decommented/game/gui/popups/LootPopup.ws	2016-01-12 11:21:15.856502764 +0400
+@@ -253,8 +253,10 @@
+ 	}
+ 	event  OnPopupTakeAllItems( ) : void
+ 	{
++		GetWitcherPlayer().StartInvUpdateTransaction();
+ 		SignalStealingReactionEvent();
+ 		TakeAllAction();
++		GetWitcherPlayer().FinishInvUpdateTransaction();
+ 		OnCloseLootWindow();
+ 	}
+ 	event  OnPopupTakeItem( Id : int ) : void
+diff -ur scripts_1_11_decommented/game/gui/popups/overlayPopup.ws scripts_1_12_decommented/game/gui/popups/overlayPopup.ws
+--- scripts_1_11_decommented/game/gui/popups/overlayPopup.ws	2016-01-12 11:20:59.732525792 +0400
++++ scripts_1_12_decommented/game/gui/popups/overlayPopup.ws	2016-01-12 11:21:15.780446269 +0400
+@@ -69,6 +69,11 @@
+ 		m_cursorHidden = value;
+ 		UpdateCursorVisibility();
+ 	}
++	public function UpdateGamepadType():void
++	{
++		UpdateInputDeviceType();
++		UpdateInputDevice();
++	}
+ 	public function UpdateInputDevice():void
+ 	{
+ 		var isGamepad:bool = theInput.LastUsedGamepad();
+diff -ur scripts_1_11_decommented/game/gui/popups/popupBase.ws scripts_1_12_decommented/game/gui/popups/popupBase.ws
+--- scripts_1_11_decommented/game/gui/popups/popupBase.ws	2016-01-12 11:20:59.787566677 +0400
++++ scripts_1_12_decommented/game/gui/popups/popupBase.ws	2016-01-12 11:21:15.835487154 +0400
+@@ -25,6 +25,7 @@
+ 		SetPlatformType(theGame.GetPlatform());
+ 		setArabicAligmentMode();
+ 		UpdateAcceptCancelSwaping();
++		UpdateInputDeviceType();
+ 	}
+ 	event  OnClosingPopup()
+ 	{
+@@ -46,6 +47,15 @@
+ 			m_fxSwapAcceptCancel.InvokeSelfOneArg( FlashArgBool(configValue) );
+ 		}
+ 	}
++	protected function UpdateInputDeviceType():void
++	{
++		var deviceType : EInputDeviceType;
++		if (m_fxSetGamepadType)
++		{
++			deviceType = theInput.GetLastUsedGamepadType();
++			m_fxSetGamepadType.InvokeSelfOneArg( FlashArgUInt(deviceType) );
++		}
++	}
+ 	protected function UpdateControlSchemeLock():void
+ 	{
+ 		if (m_fxLockControlScheme && m_guiManager)
+diff -ur scripts_1_11_decommented/game/gui/r4guimanager.ws scripts_1_12_decommented/game/gui/r4guimanager.ws
+--- scripts_1_11_decommented/game/gui/r4guimanager.ws	2016-01-12 11:20:59.722518358 +0400
++++ scripts_1_12_decommented/game/gui/r4guimanager.ws	2016-01-12 11:21:15.771439579 +0400
+@@ -68,12 +68,6 @@
+ 	LCS_Gamepad,
+ 	LCS_KbMouse
+ }
+-enum EGamepadType
+-{
+-	GT_Xbox,
+-	GT_PS4,
+-	GT_Steam
+-}
+ import class CR4GuiManager extends CGuiManager
+ {
+ 	private var lastOpenedCommonMenuName : name;
+@@ -1037,7 +1031,7 @@
+ 			_inv = GetWitcherPlayer().GetInventory();
+ 			if( _inv.IsIdValid(item) )
+ 			{
+-				if( _inv.ItemHasTag( item, 'NoShow' ) )
++				if( _inv.ItemHasTag( item, 'NoShow' ) || _inv.GetItemName(item) == 'Bodkin Bolt' ||  _inv.GetItemName(item) == 'Harpoon Bolt')
+ 				{
+ 					return;
+ 				}
+@@ -1203,6 +1197,10 @@
+ 		ShowNotification( GetLocStringByKeyExt("panel_hud_message_outofdiskspace") );
+ 		theSound.SoundEvent("gui_global_denied");
+ 	}
++	public function DisplayRestartGameToApplyAllChanges() : void
++	{
++		ShowNotification( GetLocStringByKeyExt("panel_hud_message_restarttoapplychanges") );
++	}
+ 	public function DisplayNewDlcInstalled( message : string) : void
+ 	{
+ 		ShowUserDialog( 0, "", message, UDB_Ok );
+diff -ur scripts_1_11_decommented/game/inputManager.ws scripts_1_12_decommented/game/inputManager.ws
+--- scripts_1_11_decommented/game/inputManager.ws	2016-01-12 11:21:06.716713682 +0400
++++ scripts_1_12_decommented/game/inputManager.ws	2016-01-12 11:21:22.565486231 +0400
+@@ -1,3 +1,12 @@
++enum EInputDeviceType
++{
++	GT_Xbox1 = 0,
++	GT_PS4 = 1,
++	GT_Steam = 2,
++	GT_KeyboardMouse = 3,
++	GT_Tablet = 4,
++	GT_Unknown = 5
++}
+ import class CInputManager
+ {
+ 	import final function GetLastActivationTime( actionName : name ) : float;
+@@ -14,6 +23,33 @@
+ 	import final function EnableLog( val : bool );
+ 	import final function LastUsedPCInput() : bool;
+ 	import final function LastUsedGamepad() : bool;
++	import final function GetLastUsedDeviceName() : name;
++	public final function GetLastUsedGamepadType() : EInputDeviceType
++	{
++		var deviceName:name = GetLastUsedDeviceName();
++		switch (deviceName)
++		{
++			case 'xpad':
++				return GT_Xbox1;
++				break;
++			case 'ps4pad':
++				return GT_PS4;
++				break;
++			case 'steampad':
++				return GT_Steam;
++				break;
++			case 'keyboardmouse':
++				return GT_KeyboardMouse;
++				break;
++			case 'tablet':
++				return GT_Tablet;
++				break;
++			default:
++				return GT_Unknown;
++				break;
++		}
++		return GT_Unknown;
++	}
+ 	import final function UsesPlaystationPad() : bool;
+ 	public final function UsesPlaystationPadScript() : bool
+ 	{
+diff -ur scripts_1_11_decommented/game/localizedContent.ws scripts_1_12_decommented/game/localizedContent.ws
+--- scripts_1_11_decommented/game/localizedContent.ws	2016-01-12 11:20:59.479337723 +0400
++++ scripts_1_12_decommented/game/localizedContent.ws	2016-01-12 11:21:15.535264147 +0400
+@@ -216,37 +216,39 @@
+ function GetIconByPlatform(tag : string) : string
+ {
+ 	var icon : string;
++	var isGamepad : bool;
++	isGamepad = theInput.LastUsedGamepad() || theInput.GetLastUsedGamepadType() == GT_Steam;
+ 	if (tag == "GUI_GwintPass")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if(isGamepad)
+ 			icon = GetIconForKey(IK_Pad_Y_TRIANGLE, true);
+ 		else
+ 			icon = GetIconForKey(IK_Space);
+ 	}
+ 	if (tag == "GUI_GwintChoose")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if(isGamepad)
+ 			icon = GetIconForKey(IK_Pad_A_CROSS, true);
+ 		else
+ 			icon = GetIconForKey(IK_Enter);
+ 	}
+ 	else if(tag == "GUI_GwintZoom")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if(isGamepad)
+ 			icon = GetIconForKey(IK_Pad_RightTrigger);
+ 		else
+ 			icon = GetIconForKey(IK_Shift);
+ 	}
+ 	else if (tag == "GUI_GwintLeader")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if(isGamepad)
+ 			icon = GetIconForKey(IK_Pad_X_SQUARE, true);
+ 		else
+ 			icon = GetIconForKey(IK_X);
+ 	}
+ 	else if (tag == "GUI_Close")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if(isGamepad)
+ 			icon = GetIconForKey(IK_Pad_B_CIRCLE, true);
+ 		else
+ 			icon = GetIconForKey(IK_Escape);
+@@ -630,7 +632,7 @@
+ 	else if(tag == "ICO_Skull")						icon = GetHTMLForItemICO("ICO_Skull");
+ 	else if(tag == "ICO_DungeonCrawl")			    icon = GetHTMLForItemICO("ICO_DungeonCrawl");
+ 	else if(tag == "ICO_ShopMapPin")				icon = GetHTMLForItemICO("ICO_ShopIcoPin");
+-	else if(tag == "ICO_Enchanter")					icon = GetHTMLForItemICO("ICO_Enchanter", -20);
++	else if(tag == "ICO_Enchanter")					icon = GetHTMLForItemICO("ICO_Enchanter", -2);
+ 	else if(tag == "IK_Tab")						icon = GetIconForKey(IK_Tab);
+ 	else
+ 	{
+@@ -646,6 +648,8 @@
+ function GetIconOrColorForTag3(tag : string) : string
+ {
+ 	var icon : string;
++	var isGamepad : bool;
++	isGamepad = theInput.LastUsedGamepad() || theInput.GetLastUsedGamepadType() == GT_Steam;
+ 	if(tag == "ICO_Armorer")						icon = GetHTMLForItemICO("ICO_minimap_armorer");
+ 	else if(tag == "ICO_Smith")						icon = GetHTMLForItemICO("ICO_minimap_blacksmith");
+ 	else if(tag == "ICO_Herbalist")					icon = GetHTMLForItemICO("ICO_minimap_herbalist");
+@@ -687,21 +691,21 @@
+ 	}
+ 	else if (tag == "GUI_GwintFactionLeft")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if( isGamepad )
+ 			icon = GetIconForKey(IK_Pad_LeftShoulder);
+ 		else
+ 			icon = GetIconForKey(IK_1);
+ 	}
+ 	else if (tag == "GUI_GwintFactionRight")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if( isGamepad )
+ 			icon = GetIconForKey(IK_Pad_RightShoulder);
+ 		else
+ 			icon = GetIconForKey(IK_3);
+ 	}
+ 	else if (tag == "GUI_GwintPass")
+ 	{
+-		if(theInput.LastUsedGamepad())
++		if( isGamepad )
+ 			icon = GetIconForKey(IK_Pad_Y_TRIANGLE);
+ 		else
+ 			icon = GetIconForKey(IK_Escape);
+@@ -743,6 +747,7 @@
+ }
+ function GetPadFileName(type : string) : string
+ {
++	var platformPrefix:string;
+ 	if(theInput.UsesPlaystationPadScript())
+ 	{
+ 		switch(type)
+@@ -777,33 +782,41 @@
+ 	}
+ 	else
+ 	{
++		if (theInput.GetLastUsedGamepadType() == GT_Steam)
++		{
++			platformPrefix = "_Steam_";
++		}
++		else
++		{
++			platformPrefix = "_Xbox_";
++		}
+ 		switch(type)
+ 		{
+-			case "LS" :					return "ICO_Xbox_L";
+-			case "RS" :					return "ICO_Xbox_R";
+-			case "LS_Thumb"	:			return "ICO_Xbox_L_hold";
+-			case "RS_Thumb"	:			return "ICO_Xbox_R_hold";
+-			case "RS_PRESS"	:			return "ICO_Xbox_R_hold";
+-			case "LS_Up_Down" : 		return "ICO_Xbox_L_scroll";
+-			case "LS_LeftRight" : 		return "ICO_Xbox_L_tabs";
+-			case "RS_Up" : 				return "ICO_Xbox_R_up";
+-			case "RS_Down" : 			return "ICO_Xbox_R_down";
+-			case "LS_Up" : 				return "ICO_Xbox_L_up";
+-			case "Cross_Right" : 		return "ICO_Xbox_dpad_right";
+-			case "Cross_Left" : 		return "ICO_Xbox_dpad_left";
+-			case "Cross_Up" : 			return "ICO_Xbox_dpad_up";
+-			case "Cross_Down" : 		return "ICO_Xbox_dpad_down";
+-			case "Cross_LeftRight" :  	return "ICO_Xbox_dpad_left_right";
+-			case "Back" : 				return "ICO_Xbox_Back";
+-			case "Start" : 				return "ICO_Xbox_Start";
+-			case "RT" : 				return "ICO_Xbox_RT";
+-			case "LT" : 				return "ICO_Xbox_LT";
+-			case "LB" : 				return "ICO_Xbox_LB";
+-			case "RB" : 				return "ICO_Xbox_RB";
+-			case "A" : 					return "ICO_Xbox_A";
+-			case "B" : 					return "ICO_Xbox_B";
+-			case "X" : 					return "ICO_Xbox_X";
+-			case "Y" : 					return "ICO_Xbox_Y";
++			case "LS" :					return "ICO" + platformPrefix + "L";
++			case "RS" :					return "ICO" + platformPrefix + "R";
++			case "LS_Thumb"	:			return "ICO" + platformPrefix + "L_hold";
++			case "RS_Thumb"	:			return "ICO" + platformPrefix + "R_hold";
++			case "RS_PRESS"	:			return "ICO" + platformPrefix + "R_hold";
++			case "LS_Up_Down" : 		return "ICO" + platformPrefix + "L_scroll";
++			case "LS_LeftRight" : 		return "ICO" + platformPrefix + "L_tabs";
++			case "RS_Up" : 				return "ICO" + platformPrefix + "R_up";
++			case "RS_Down" : 			return "ICO" + platformPrefix + "R_down";
++			case "LS_Up" : 				return "ICO" + platformPrefix + "L_up";
++			case "Cross_Right" : 		return "ICO" + platformPrefix + "dpad_right";
++			case "Cross_Left" : 		return "ICO" + platformPrefix + "dpad_left";
++			case "Cross_Up" : 			return "ICO" + platformPrefix + "dpad_up";
++			case "Cross_Down" : 		return "ICO" + platformPrefix + "dpad_down";
++			case "Cross_LeftRight" :  	return "ICO" + platformPrefix + "dpad_left_right";
++			case "Back" : 				return "ICO" + platformPrefix + "Back";
++			case "Start" : 				return "ICO" + platformPrefix + "Start";
++			case "RT" : 				return "ICO" + platformPrefix + "RT";
++			case "LT" : 				return "ICO" + platformPrefix + "LT";
++			case "LB" : 				return "ICO" + platformPrefix + "LB";
++			case "RB" : 				return "ICO" + platformPrefix + "RB";
++			case "A" : 					return "ICO" + platformPrefix + "A";
++			case "B" : 					return "ICO" + platformPrefix + "B";
++			case "X" : 					return "ICO" + platformPrefix + "X";
++			case "Y" : 					return "ICO" + platformPrefix + "Y";
+ 		}
+ 	}
+ 	return "";
+diff -ur scripts_1_11_decommented/game/npc/npc.ws scripts_1_12_decommented/game/npc/npc.ws
+--- scripts_1_11_decommented/game/npc/npc.ws	2016-01-12 11:20:57.228665912 +0400
++++ scripts_1_12_decommented/game/npc/npc.ws	2016-01-12 11:21:13.346638424 +0400
+@@ -19,7 +19,7 @@
+ 	editable var unstoppable		: bool;				hint unstoppable = "won't play hit reaction nor critical state reaction";
+ 	editable var RemainsTags 		: array<name>;		hint RemainsTags="If set then the NPC's remains will be tagged with given tags";
+ 	editable var level 				: int;				default level = 1;
+-	saved	 var currentLevel		: int;
++	var currentLevel		: int;
+ 	editable saved var levelFakeAddon     : int;				default levelFakeAddon = 0;
+ 	private	 saved var newGamePlusFakeLevelAddon : bool;		default newGamePlusFakeLevelAddon = false;
+ 	editable var isMiniBossLevel    : bool;				default isMiniBossLevel = false;
+@@ -203,12 +203,18 @@
+ 		var heading 		: float;
+ 		var remainingDuration : float;
+ 		var oldLevel : int;
+-		if (!spawnData.restored)
+-			currentLevel = level;
++		currentLevel = level;
+ 		super.OnSpawned(spawnData);
+ 		SetThreatLevel();
+ 		GotoStateAuto();
+ 		isTalkDisabledTemporary = false;
++		if ( HasTag( 'fergus_graem' ) )
++		{
++			if ( !isTalkDisabled )
++			{
++				GetComponent( 'talk' ).SetEnabled( true );
++			}
++		}
+ 		if(!spawnData.restored && !immortalityInitialized )
+ 		{
+ 			SetCanPlayHitAnim( true );
+@@ -286,11 +292,11 @@
+ 		}
+ 		if(HasAbility('_canBeFollower') && theGame.GetDifficultyMode() != EDM_Hardcore)
+ 			RemoveAbility('_canBeFollower');
+-		if( (!spawnData.restored || !wasNGPlusLevelAdded)  && (FactsQuerySum("NewGamePlus") > 0 || (!HasAbility('NoAdaptBalance') && currentLevel > 1 ) ) )
++		if( (FactsQuerySum("NewGamePlus") > 0 || (!HasAbility('NoAdaptBalance') && currentLevel > 1 ) ) )
+ 		{
+ 			if ( theGame.IsActive() )
+ 			{
+-				if( ( FactsQuerySum("NewGamePlus") > 0 ) && !HasTag('animal') )
++				if( !wasNGPlusLevelAdded && ( ( FactsQuerySum("NewGamePlus") > 0 ) && !HasTag('animal') ))
+ 				{
+ 					if( !HasAbility('NPCDoNotGainBoost') && !HasAbility('NewGamePlusFakeLevel') )
+ 					{
+@@ -694,38 +700,48 @@
+ 					else 					  { if ( !HasAbility(theGame.params.ENEMY_BONUS_LOW) ) AddAbility(theGame.params.ENEMY_BONUS_LOW, true); }
+ 					if ( !HasAbility(theGame.params.ENEMY_BONUS_PER_LEVEL) ) AddAbilityMultiple(theGame.params.ENEMY_BONUS_PER_LEVEL, currentLevel-1);
+ 				}
+-			} else
+-			{
+-			if ( (int)CalculateAttributeValue( GetAttributeValue('armor') ) > 0 )
+-			{
+-				if ( GetIsMonsterTypeGroup() )
+-				{
+-					if ( !HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP_ARMORED) ) AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP_ARMORED, currentLevel-1);
+-				} else
+-				{
+-					if ( !HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_ARMORED) ) AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_ARMORED, currentLevel-1);
+-				}
+ 			}
+ 			else
+ 			{
+-				if ( GetIsMonsterTypeGroup() )
++				if(	!HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP_ARMORED) &&
++					!HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_ARMORED) &&
++					!HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP) &&
++					!HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL)
++				)
+ 				{
+-					if ( !HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP) ) AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP, currentLevel-1);
+-				} else
++					if ( CalculateAttributeValue(GetTotalArmor()) > 0.f )
++					{
++						if ( GetIsMonsterTypeGroup() )
++						{
++							AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP_ARMORED, currentLevel-1);
++						}
++						else
++						{
++							AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_ARMORED, currentLevel-1);
++						}
++					}
++					else
++					{
++						if ( GetIsMonsterTypeGroup() )
++						{
++							AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL_GROUP, currentLevel-1);
++						}
++						else
++						{
++							AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL, currentLevel-1);
++						}
++					}
++				}
++				if ( thePlayer.IsCiri() && theGame.GetDifficultyMode() == EDM_Hardcore && !HasAbility('CiriHardcoreDebuffMonster') ) AddAbility('CiriHardcoreDebuffMonster');
++				if ( !ciriEntity )
+ 				{
+-					if ( !HasAbility(theGame.params.MONSTER_BONUS_PER_LEVEL) ) AddAbilityMultiple(theGame.params.MONSTER_BONUS_PER_LEVEL, currentLevel-1);
++					lvlDiff = (int)CalculateAttributeValue(GetAttributeValue('level',,true)) - thePlayer.GetLevel();
++					if 		( lvlDiff >= theGame.params.LEVEL_DIFF_DEADLY ) { if ( !HasAbility(theGame.params.MONSTER_BONUS_DEADLY) ) { AddAbility(theGame.params.MONSTER_BONUS_DEADLY, true); AddBuffImmunity(EET_Blindness, 'DeadlyEnemy', true); AddBuffImmunity(EET_WraithBlindness, 'DeadlyEnemy', true); } }
++					else if ( lvlDiff >= theGame.params.LEVEL_DIFF_HIGH )  { if ( !HasAbility(theGame.params.MONSTER_BONUS_HIGH) ) AddAbility(theGame.params.MONSTER_BONUS_HIGH, true); }
++					else if ( lvlDiff > -theGame.params.LEVEL_DIFF_HIGH )  { }
++					else 					  { if ( !HasAbility(theGame.params.MONSTER_BONUS_LOW) ) AddAbility(theGame.params.MONSTER_BONUS_LOW, true); }
+ 				}
+ 			}
+-			if ( thePlayer.IsCiri() && theGame.GetDifficultyMode() == EDM_Hardcore && !HasAbility('CiriHardcoreDebuffMonster') ) AddAbility('CiriHardcoreDebuffMonster');
+-			if ( !ciriEntity )
+-			{
+-				lvlDiff = (int)CalculateAttributeValue(GetAttributeValue('level',,true)) - thePlayer.GetLevel();
+-				if 		( lvlDiff >= theGame.params.LEVEL_DIFF_DEADLY ) { if ( !HasAbility(theGame.params.MONSTER_BONUS_DEADLY) ) { AddAbility(theGame.params.MONSTER_BONUS_DEADLY, true); AddBuffImmunity(EET_Blindness, 'DeadlyEnemy', true); AddBuffImmunity(EET_WraithBlindness, 'DeadlyEnemy', true); } }
+-				else if ( lvlDiff >= theGame.params.LEVEL_DIFF_HIGH )  { if ( !HasAbility(theGame.params.MONSTER_BONUS_HIGH) ) AddAbility(theGame.params.MONSTER_BONUS_HIGH, true); }
+-				else if ( lvlDiff > -theGame.params.LEVEL_DIFF_HIGH )  { }
+-				else 					  { if ( !HasAbility(theGame.params.MONSTER_BONUS_LOW) ) AddAbility(theGame.params.MONSTER_BONUS_LOW, true); }
+-			}
+-			}
+ 		}
+ 	}
+ 	public function GainStat( stat : EBaseCharacterStats, amount : float )
+diff -ur scripts_1_11_decommented/game/player/playerInput.ws scripts_1_12_decommented/game/player/playerInput.ws
+--- scripts_1_11_decommented/game/player/playerInput.ws	2016-01-12 11:20:57.867140174 +0400
++++ scripts_1_12_decommented/game/player/playerInput.ws	2016-01-12 11:21:13.966098562 +0400
+@@ -1464,7 +1464,7 @@
+ 	{
+ 		if ( IsReleased( action )  )
+ 		{
+-			CancelHoldAttacks();
++			thePlayer.CancelHoldAttacks();
+ 			return true;
+ 		}
+ 		if ( !IsPlayerAbleToPerformSpecialAttack() )
+@@ -1490,7 +1490,7 @@
+ 	{
+ 		if ( IsReleased( action )  )
+ 		{
+-			CancelHoldAttacks();
++			thePlayer.CancelHoldAttacks();
+ 			return true;
+ 		}
+ 		if ( !IsPlayerAbleToPerformSpecialAttack() )
+@@ -1519,33 +1519,6 @@
+ 				theInput.ForceDeactivateAction('AttackWithAlternateHeavy');
+ 		}
+ 	}
+-	public function CancelHoldAttacks()
+-	{
+-		thePlayer.RemoveTimer( 'IsSpecialLightAttackInputHeld' );
+-		thePlayer.RemoveTimer( 'IsSpecialHeavyAttackInputHeld' );
+-		thePlayer.RemoveTimer( 'SpecialAttackLightSustainCost' );
+-		thePlayer.RemoveTimer( 'SpecialAttackHeavySustainCost' );
+-		thePlayer.RemoveTimer( 'UpdateSpecialAttackLightHeading' );
+-		thePlayer.UnblockAction( EIAB_Crossbow, 'SpecialAttack' );
+-		if ( thePlayer.GetBehaviorVariable( 'combatActionType' ) == (int)CAT_SpecialAttack )
+-		{
+-			if( thePlayer.GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Light
+-				&& thePlayer.GetBehaviorVariable( 'isPerformingSpecialAttack' ) == 1.f )
+-			{
+-				thePlayer.SetAttackActionName(SkillEnumToName(S_Sword_s01));
+-				thePlayer.PushCombatActionOnBuffer( EBAT_SpecialAttack_Light, BS_Released );
+-				thePlayer.ProcessCombatActionBuffer();
+-				((W3PlayerWitcherStateCombatFists) GetState('Combat')).ResetTimeToEndCombat();
+-			}
+-			else if( thePlayer.GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Heavy
+-					&& thePlayer.GetBehaviorVariable( 'isPerformingSpecialAttack' ) == 1.f )
+-			{
+-				thePlayer.SetAttackActionName(SkillEnumToName(S_Sword_s02));
+-				thePlayer.PushCombatActionOnBuffer( EBAT_SpecialAttack_Heavy, BS_Released );
+-				thePlayer.ProcessCombatActionBuffer();
+-			}
+-		}
+-	}
+ 	event OnCbtCiriSpecialAttack( action : SInputAction )
+ 	{
+ 		if( !GetCiriPlayer().HasSword() )
+@@ -1756,7 +1729,7 @@
+ 			{
+ 				if(!thePlayer.CanUseSkill(signSkill))
+ 				{
+-					thePlayer.DisplayActionDisallowedHudMessage(EIAB_Undefined, false, false, true);
++					thePlayer.DisplayActionDisallowedHudMessage(EIAB_Signs, false, false, true);
+ 					return false;
+ 				}
+ 				if( thePlayer.HasStaminaToUseSkill( signSkill, false ) )
+diff -ur scripts_1_11_decommented/game/player/playerWeaponHolster.ws scripts_1_12_decommented/game/player/playerWeaponHolster.ws
+--- scripts_1_11_decommented/game/player/playerWeaponHolster.ws	2016-01-12 11:20:58.089305199 +0400
++++ scripts_1_12_decommented/game/player/playerWeaponHolster.ws	2016-01-12 11:21:14.184260614 +0400
+@@ -372,6 +372,10 @@
+ 	}
+ 	event OnEquippedMeleeWeapon( weaponType : EPlayerWeapon )
+ 	{
++		if( weaponType == PW_Steel || weaponType == PW_Silver )
++		{
++			thePlayer.AddOilBuff( weaponType == PW_Steel );
++		}
+ 		if(weaponType == PW_Steel || weaponType == PW_Silver)
+ 			thePlayer.PlayRuneword4FX(weaponType);
+ 		if ( parent.GetCurrentMeleeWeapon() != weaponType || weaponType == PW_Fists || weaponType == PW_None )
+diff -ur scripts_1_11_decommented/game/player/playerWitcher.ws scripts_1_12_decommented/game/player/playerWitcher.ws
+--- scripts_1_11_decommented/game/player/playerWitcher.ws	2016-01-12 11:20:58.017251678 +0400
++++ scripts_1_12_decommented/game/player/playerWitcher.ws	2016-01-12 11:21:14.114208579 +0400
+@@ -38,7 +38,7 @@
+ 	default isThrowingItem = false;
+ 	default remainingBombThrowDelaySlot1 = 0.f;
+ 	default remainingBombThrowDelaySlot2 = 0.f;
+-	private 	  var tempLearnedSignSkills : array<SSimpleSkill>;
++	private saved var tempLearnedSignSkills : array<SSimpleSkill>;
+ 	public	saved var autoLevel				: bool;
+ 	protected var skillBonusPotionEffect			: CBaseGameplayEffect;
+ 	public saved 		var levelManager 				: W3LevelManager;
+@@ -52,6 +52,8 @@
+ 	protected saved	var horseManagerHandle			: EntityHandle;
+ 	private var isInitialized : bool;
+ 		default isInitialized = false;
++	private var invUpdateTransaction : bool;
++		default invUpdateTransaction = false;
+ 	event OnSpawned( spawnData : SEntitySpawnData )
+ 	{
+ 		var i 				: int;
+@@ -71,7 +73,7 @@
+ 		AddAnimEventCallback( 'ProjectileThrow',	'OnAnimEvent_Throwable'	);
+ 		AddAnimEventCallback( 'OnWeaponReload',		'OnAnimEvent_Throwable'	);
+ 		AddAnimEventCallback( 'ProjectileAttach',	'OnAnimEvent_Throwable' );
+-		theTelemetry.Log( TE_HERO_SPAWNED );
++		theTelemetry.LogWithName( TE_HERO_SPAWNED );
+ 		runewordInfusionType = ST_None;
+ 		inv = GetInventory();
+ 		signOwner = new W3SignOwnerPlayer in this;
+@@ -285,8 +287,44 @@
+ 		ResumeStaminaRegen('WhirlSkill');
+ 		if(HasAbility('Runeword 4 _Stats', true))
+ 			StartVitalityRegen();
++		if(HasAbility('sword_s19'))
++		{
++			RemoveTemporarySkills();
++		}
++		HACK_UnequipWolfLiver();
+ 		isInitialized = true;
+ 	}
++	private function HACK_UnequipWolfLiver()
++	{
++		var itemName1, itemName2, itemName3, itemName4 : name;
++		var item1, item2, item3, item4 : SItemUniqueId;
++		GetItemEquippedOnSlot( EES_Potion1, item1 );
++		GetItemEquippedOnSlot( EES_Potion2, item2 );
++		GetItemEquippedOnSlot( EES_Potion3, item3 );
++		GetItemEquippedOnSlot( EES_Potion4, item4 );
++		if ( inv.IsIdValid( item1 ) )
++			itemName1 = inv.GetItemName( item1 );
++		if ( inv.IsIdValid( item2 ) )
++			itemName2 = inv.GetItemName( item2 );
++		if ( inv.IsIdValid( item3 ) )
++			itemName3 = inv.GetItemName( item3 );
++		if ( inv.IsIdValid( item4 ) )
++			itemName4 = inv.GetItemName( item4 );
++		if ( itemName1 == 'Wolf liver' || itemName3 == 'Wolf liver' )
++		{
++			if ( inv.IsIdValid( item1 ) )
++				UnequipItem( item1 );
++			if ( inv.IsIdValid( item3 ) )
++				UnequipItem( item3 );
++		}
++		else if ( itemName2 == 'Wolf liver' || itemName4 == 'Wolf liver' )
++		{
++			if ( inv.IsIdValid( item2 ) )
++				UnequipItem( item2 );
++			if ( inv.IsIdValid( item4 ) )
++				UnequipItem( item4 );
++		}
++	}
+ 	timer function DelayedHorseUpdate( dt : float, id : int )
+ 	{
+ 		var man : W3HorseManager;
+@@ -354,6 +392,8 @@
+ 		var offset : float;
+ 		var buffs : array<CBaseGameplayEffect>;
+ 		var mutagen : W3Mutagen_Effect;
++		var skill : SSimpleSkill;
++		var spentSkillPoints, swordSkillPointsSpent, alchemySkillPointsSpent, perkSkillPointsSpent, pointsToAdd : int;
+ 		if(FactsQuerySum("ClearingPotionPassiveBonusFix") < 1)
+ 		{
+ 			pam = (W3PlayerAbilityManager)abilityManager;
+@@ -429,6 +469,34 @@
+ 		{
+ 			theGame.GetJournalManager().ActivateEntryByScriptTag('TutorialJournalEnchanting', JS_Active);
+ 		}
++		levelManager.FixMaxLevel();
++		if(HasAbility('sword_s19') && FactsQuerySum("Patch_Sword_s19") < 1)
++		{
++			pam = (W3PlayerAbilityManager)abilityManager;
++			skill.level = 0;
++			for(i = S_Magic_s01; i <= S_Magic_s20; i+=1)
++			{
++				skill.skillType = i;
++				pam.RemoveTemporarySkill(skill);
++			}
++			spentSkillPoints = levelManager.GetPointsUsed(ESkillPoint);
++			swordSkillPointsSpent = pam.GetPathPointsSpent(ESP_Sword);
++			alchemySkillPointsSpent = pam.GetPathPointsSpent(ESP_Alchemy);
++			perkSkillPointsSpent = pam.GetPathPointsSpent(ESP_Perks);
++			pointsToAdd = spentSkillPoints - swordSkillPointsSpent - alchemySkillPointsSpent - perkSkillPointsSpent;
++			if(pointsToAdd > 0)
++				levelManager.UnspendPoints(ESkillPoint, pointsToAdd);
++			RemoveAbilityAll('sword_s19');
++			FactsAdd("Patch_Sword_s19");
++		}
++		if(FactsQuerySum("Patch_Armor_Type_Glyphwords") < 1)
++		{
++			pam = (W3PlayerAbilityManager)abilityManager;
++			pam.SetPerkArmorBonus(S_Perk_05);
++			pam.SetPerkArmorBonus(S_Perk_06);
++			pam.SetPerkArmorBonus(S_Perk_07);
++			FactsAdd("Patch_Armor_Type_Glyphwords");
++		}
+ 	}
+ 	public final function RestoreQuen(quenHealth : float, quenDuration : float) : bool
+ 	{
+@@ -735,6 +803,15 @@
+ 		NewGamePlusReplaceItem('EP1 Viper School steel sword', 'NGP EP1 Viper School steel sword', inv);
+ 		NewGamePlusReplaceItem('EP1 Viper School silver sword', 'NGP EP1 Viper School silver sword', inv);
+ 	}
++	public function GetEquippedSword(steel : bool) : SItemUniqueId
++	{
++		var item : SItemUniqueId;
++		if(steel)
++			GetItemEquippedOnSlot(EES_SteelSword, item);
++		else
++			GetItemEquippedOnSlot(EES_SilverSword, item);
++		return item;
++	}
+ 	timer function BroadcastRain( deltaTime : float, id : int )
+ 	{
+ 		var rainStrength : float = 0;
+@@ -1055,7 +1132,7 @@
+ 		var i : int;
+ 		var ammo, ammoBonus : float;
+ 		var dm : CDefinitionsManagerAccessor;
+-		var swordEquipped : bool;
++		var swordEquipped, swordHeld, steel : bool;
+ 		var tutStateOil : W3TutorialManagerUIHandlerStateOils;
+ 		var sword : CWitcherSword;
+ 		if(!CanApplyOilOnItem(oilId, usedOnItem))
+@@ -1063,6 +1140,9 @@
+ 		dm = theGame.GetDefinitionsManager();
+ 		inv.GetItemAbilitiesWithTag(oilId, theGame.params.OIL_ABILITY_TAG, oilAbilities);
+ 		swordEquipped = IsItemEquipped(usedOnItem);
++		swordHeld     = IsItemHeld(usedOnItem);
++		steel = inv.IsItemSteelSwordUsableByPlayer(usedOnItem);
++		RemoveOilBuff(steel);
+ 		RemoveItemOil(usedOnItem);
+ 		for(i=0; i<oilAbilities.Size(); i+=1)
+ 		{
+@@ -1072,11 +1152,11 @@
+ 				AddAbility(oilAbilities[i]);
+ 			}
+ 		}
+-			if(swordEquipped)
+-			{
+-				sword = (CWitcherSword) inv.GetItemEntityUnsafe(usedOnItem);
+-				sword.ApplyOil( inv );
+-			}
++		if(swordEquipped)
++		{
++			sword = (CWitcherSword) inv.GetItemEntityUnsafe(usedOnItem);
++			sword.ApplyOil( inv );
++		}
+ 		ammo = CalculateAttributeValue(inv.GetItemAttributeValue(oilId, 'ammo'));
+ 		if(CanUseSkill(S_Alchemy_s06))
+ 		{
+@@ -1095,6 +1175,10 @@
+ 				tutStateOil.OnOilApplied();
+ 			}
+ 		}
++		if ( swordHeld )
++		{
++			AddOilBuff(steel);
++		}
+ 		theGame.GetGlobalEventsManager().OnScriptedEvent( SEC_OnOilApplied );
+ 	}
+ 	function ReduceDamage(out damageData : W3DamageAction)
+@@ -1276,12 +1360,12 @@
+ 	{
+ 		var min, max, bonus, null, oilBonus : SAbilityAttributeValue;
+ 		var mutagen : CBaseGameplayEffect;
+-		var vsAttributeName : name;
++		var monsterBonusType : name;
+ 		bonus = super.GetCriticalHitDamageBonus(weaponId, victimMonsterCategory, isStrikeAtBack);
+ 		if(inv.ItemHasOilApplied(weaponId) && GetStat(BCS_Focus) >= 3 && CanUseSkill(S_Alchemy_s07))
+ 		{
+-			vsAttributeName = MonsterCategoryToCriticalDamageBonus(victimMonsterCategory);
+-			oilBonus = inv.GetItemAttributeValue(weaponId, vsAttributeName);
++			monsterBonusType = MonsterCategoryToAttackPowerBonus( victimMonsterCategory );
++			oilBonus = inv.GetItemAttributeValue( weaponId, monsterBonusType );
+ 			if(oilBonus != null)
+ 			{
+ 				bonus += GetSkillAttributeValue(S_Alchemy_s07, theGame.params.CRITICAL_HIT_DAMAGE_BONUS, false, true);
+@@ -2640,6 +2724,12 @@
+ 			return false;
+ 		return itemSlots.Contains(item);
+ 	}
++	public function IsItemHeld(item : SItemUniqueId) : bool
++	{
++		if(!inv.IsIdValid(item))
++			return false;
++		return inv.IsItemHeld(item);
++	}
+ 	public function IsAnyItemEquippedOnSlot(slot : EEquipmentSlots) : bool
+ 	{
+ 		if(slot == EES_InvalidSlot || slot < 0 || slot > EnumGetMax('EEquipmentSlots'))
+@@ -2884,17 +2974,17 @@
+ 			if(armorType == EAT_Light)
+ 			{
+ 				if(CanUseSkill(S_Perk_05))
+-					pam.UpdatePerkArmorBonus(S_Perk_05, true);
++					pam.SetPerkArmorBonus(S_Perk_05);
+ 			}
+ 			else if(armorType == EAT_Medium)
+ 			{
+ 				if(CanUseSkill(S_Perk_06))
+-					pam.UpdatePerkArmorBonus(S_Perk_06, true);
++					pam.SetPerkArmorBonus(S_Perk_06);
+ 			}
+ 			else if(armorType == EAT_Heavy)
+ 			{
+ 				if(CanUseSkill(S_Perk_07))
+-					pam.UpdatePerkArmorBonus(S_Perk_07, true);
++					pam.SetPerkArmorBonus(S_Perk_07);
+ 			}
+ 		}
+ 		theGame.GetGlobalEventsManager().OnScriptedEvent( SEC_OnItemEquipped );
+@@ -3024,6 +3114,10 @@
+ 			groupID = pam.GetSkillGroupIdOfMutagenSlot(slot);
+ 			prevSkillColor = pam.GetSkillGroupColor(groupID);
+ 		}
++		if(slot == EES_SilverSword  || slot == EES_SteelSword)
++		{
++			RemoveOilBuff( slot == EES_SteelSword );
++		}
+ 		item = itemSlots[slot];
+ 		itemSlots[slot] = GetInvalidUniqueId();
+ 		if(inv.ItemHasTag( item, 'PhantomWeapon' ) && GetPhantomWeaponMgr())
+@@ -3125,20 +3219,17 @@
+ 		{
+ 			armorType = inv.GetArmorType(item);
+ 			pam = (W3PlayerAbilityManager)abilityManager;
+-			if(armorType == EAT_Light || GetCharacterStats().HasAbility('Glyphword 2 _Stats', true))
++			if(CanUseSkill(S_Perk_05) && (armorType == EAT_Light || GetCharacterStats().HasAbility('Glyphword 2 _Stats', true) || inv.ItemHasAbility(item, 'Glyphword 2 _Stats')))
+ 			{
+-				if(CanUseSkill(S_Perk_05))
+-					pam.UpdatePerkArmorBonus(S_Perk_05, false);
++				pam.SetPerkArmorBonus(S_Perk_05);
+ 			}
+-			if(armorType == EAT_Medium || GetCharacterStats().HasAbility('Glyphword 3 _Stats', true))
++			if(CanUseSkill(S_Perk_06) && (armorType == EAT_Medium || GetCharacterStats().HasAbility('Glyphword 3 _Stats', true) || inv.ItemHasAbility(item, 'Glyphword 3 _Stats')) )
+ 			{
+-				if(CanUseSkill(S_Perk_06))
+-					pam.UpdatePerkArmorBonus(S_Perk_06, false);
++				pam.SetPerkArmorBonus(S_Perk_06);
+ 			}
+-			if(armorType == EAT_Heavy || GetCharacterStats().HasAbility('Glyphword 4 _Stats', true))
++			if(CanUseSkill(S_Perk_07) && (armorType == EAT_Heavy || GetCharacterStats().HasAbility('Glyphword 4 _Stats', true) || inv.ItemHasAbility(item, 'Glyphword 4 _Stats')) )
+ 			{
+-				if(CanUseSkill(S_Perk_07))
+-					pam.UpdatePerkArmorBonus(S_Perk_07, false);
++				pam.SetPerkArmorBonus(S_Perk_07);
+ 			}
+ 		}
+ 		if( slot == EES_Gloves )
+@@ -3146,8 +3237,14 @@
+ 			thePlayer.DestroyEffect('runeword_4');
+ 		}
+ 		hud = (CR4ScriptedHud)theGame.GetHud();
+-		damagedItemModule = hud.GetDamagedItemModule();
+-		damagedItemModule.OnItemUnequippedFromSlot( slot );
++		if ( hud )
++		{
++			damagedItemModule = hud.GetDamagedItemModule();
++			if ( damagedItemModule )
++			{
++				damagedItemModule.OnItemUnequippedFromSlot( slot );
++			}
++		}
+ 		theGame.GetGlobalEventsManager().OnScriptedEvent( SEC_OnItemEquipped );
+ 		return retBool;
+ 	}
+@@ -3199,16 +3296,26 @@
+ 		inve.GetAllItems(items);
+ 		for(i=0; i<items.Size(); i+=1)
+ 		{
+-			if( inv.IsItemEncumbranceItem( items[i] ) )
+-			{
+-				encumbrance += inve.GetItemEncumbrance( items[i] );
+-			}
++			encumbrance += inve.GetItemEncumbrance( items[i] );
+ 		}
+ 		return encumbrance;
+ 	}
++	public function StartInvUpdateTransaction():void
++	{
++		invUpdateTransaction = true;
++	}
++	public function FinishInvUpdateTransaction():void
++	{
++		invUpdateTransaction = false;
++		UpdateEncumbrance();
++	}
+ 	public function UpdateEncumbrance()
+ 	{
+ 		var temp : bool;
++		if (invUpdateTransaction)
++		{
++			return;
++		}
+ 		if ( GetEncumbrance() >= (GetMaxRunEncumbrance(temp) + 1) )
+ 		{
+ 			if( !HasBuff(EET_OverEncumbered) )
+diff -ur scripts_1_11_decommented/game/player/player.ws scripts_1_12_decommented/game/player/player.ws
+--- scripts_1_11_decommented/game/player/player.ws	2016-01-12 11:20:58.148349058 +0400
++++ scripts_1_12_decommented/game/player/player.ws	2016-01-12 11:21:14.243304472 +0400
+@@ -1641,8 +1641,27 @@
+ 	{
+ 		inputHandler.Dbg_UnlockAllActions();
+ 	}
++	event OnCriticalStateAnimStopGlobalHack()
++	{
++		var buff : CBaseGameplayEffect;
++		if(!csNormallyStoppedBuff)
++		{
++			if(effectManager)
++			{
++				buff = effectManager.GetCurrentlyAnimatedCS();
++				if(buff)
++					OnCriticalStateAnimStop();
++			}
++		}
++		else
++		{
++			csNormallyStoppedBuff = false;
++		}
++	}
++	private var csNormallyStoppedBuff : bool;
+ 	event OnCriticalStateAnimStop()
+ 	{
++		csNormallyStoppedBuff = true;
+ 		SetBehaviorVariable( 'bCriticalState', 0);
+ 		CriticalStateAnimStopped(false);
+ 		if ( this.IsRagdolled() )
+diff -ur scripts_1_11_decommented/game/player/r4Player.ws scripts_1_12_decommented/game/player/r4Player.ws
+--- scripts_1_11_decommented/game/player/r4Player.ws	2016-01-12 11:20:58.370514083 +0400
++++ scripts_1_12_decommented/game/player/r4Player.ws	2016-01-12 11:21:14.461466524 +0400
+@@ -294,6 +294,7 @@
+ 		AddAnimEventCallback('RemoveTangled',			'OnAnimEvent_RemoveTangled');
+ 		AddItemPerLevelList();
+ 		enemyCollectionDist = findMoveTargetDistMax;
++		theGame.RemoveTimeScale('horse_melee');
+ 		if(!spawnData.restored && !((W3ReplacerCiri)this) )
+ 		{
+ 			AddTimer('GiveStartingItems', 0.00001, true, , , true);
+@@ -977,7 +978,7 @@
+ 							useKnockdown = false;
+ 							if ( CanUseSkill(S_Sword_s11) )
+ 							{
+-								if( GetSkillLevel(S_Sword_s11) > 1 && RandF() < GetWitcherPlayer().GetStat(BCS_Focus) )
++								if( GetSkillLevel(S_Sword_s11) > 1 && RandRangeF(3,0) < GetWitcherPlayer().GetStat(BCS_Focus) )
+ 								{
+ 									duration = CalculateAttributeValue(GetSkillAttributeValue(S_Sword_s11, 'duration', false, true));
+ 									useKnockdown = true;
+@@ -1876,6 +1877,10 @@
+ 	event OnHolsteredItem( category :  name, slotName : name )
+ 	{
+ 		var weaponType : EPlayerWeapon;
++		if ( slotName == 'r_weapon' && (category == 'steelsword' || category == 'silversword') )
++		{
++			RemoveOilBuff(category == 'steelsword');
++		}
+ 		if ( slotName == 'r_weapon' )
+ 		{
+ 			weaponType = weaponHolster.GetCurrentMeleeWeapon();
+@@ -7444,28 +7449,27 @@
+ 	}
+ 	public function CancelHoldAttacks()
+ 	{
+-		thePlayer.RemoveTimer( 'IsSpecialLightAttackInputHeld' );
+-		thePlayer.RemoveTimer( 'IsSpecialHeavyAttackInputHeld' );
+-		thePlayer.RemoveTimer( 'SpecialAttackLightSustainCost' );
+-		thePlayer.RemoveTimer( 'SpecialAttackHeavySustainCost' );
+-		thePlayer.RemoveTimer( 'UpdateSpecialAttackLightHeading' );
+-		thePlayer.UnblockAction( EIAB_Crossbow, 'SpecialAttack' );
+-		if ( thePlayer.GetBehaviorVariable( 'combatActionType' ) == (int)CAT_SpecialAttack )
+-		{
+-			if( thePlayer.GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Light
+-				&& thePlayer.GetBehaviorVariable( 'isPerformingSpecialAttack' ) == 1.f )
+-			{
+-				thePlayer.SetAttackActionName(SkillEnumToName(S_Sword_s01));
+-				thePlayer.PushCombatActionOnBuffer( EBAT_SpecialAttack_Light, BS_Released );
+-				thePlayer.ProcessCombatActionBuffer();
++		RemoveTimer( 'IsSpecialLightAttackInputHeld' );
++		RemoveTimer( 'IsSpecialHeavyAttackInputHeld' );
++		RemoveTimer( 'SpecialAttackLightSustainCost' );
++		RemoveTimer( 'SpecialAttackHeavySustainCost' );
++		RemoveTimer( 'UpdateSpecialAttackLightHeading' );
++		UnblockAction( EIAB_Crossbow, 'SpecialAttack' );
++		ResumeStaminaRegen('WhirlSkill');
++		if ( GetBehaviorVariable( 'combatActionType' ) == (int)CAT_SpecialAttack && GetBehaviorVariable( 'isPerformingSpecialAttack' ) == 1.f )
++		{
++			if( GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Light )
++			{
++				SetAttackActionName(SkillEnumToName(S_Sword_s01));
++				PushCombatActionOnBuffer( EBAT_SpecialAttack_Light, BS_Released );
++				ProcessCombatActionBuffer();
+ 				((W3PlayerWitcherStateCombatFists) GetState('Combat')).ResetTimeToEndCombat();
+ 			}
+-			else if( thePlayer.GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Heavy
+-					&& thePlayer.GetBehaviorVariable( 'isPerformingSpecialAttack' ) == 1.f )
++			else if( GetBehaviorVariable( 'playerAttackType' ) == (int)PAT_Heavy )
+ 			{
+-				thePlayer.SetAttackActionName(SkillEnumToName(S_Sword_s02));
+-				thePlayer.PushCombatActionOnBuffer( EBAT_SpecialAttack_Heavy, BS_Released );
+-				thePlayer.ProcessCombatActionBuffer();
++				SetAttackActionName(SkillEnumToName(S_Sword_s02));
++				PushCombatActionOnBuffer( EBAT_SpecialAttack_Heavy, BS_Released );
++				ProcessCombatActionBuffer();
+ 			}
+ 		}
+ 	}
+@@ -7697,7 +7701,7 @@
+ 		}
+ 		HudMessages.PushBack(value);
+ 	}
+-	private final function DisallowedActionDontShowHack(action : EInputActionBlock) : bool
++	private final function DisallowedActionDontShowHack(action : EInputActionBlock, isTimeLock : bool) : bool
+ 	{
+ 		var locks : array< SInputActionLock >;
+ 		var i : int;
+@@ -7705,6 +7709,8 @@
+ 		{
+ 			return true;
+ 		}
++		if(isTimeLock)
++			return false;
+ 		if(action == EIAB_OpenMeditation)
+ 			return false;
+ 		locks = GetActionLocks(action);
+@@ -7723,7 +7729,7 @@
+ 	public final function DisplayActionDisallowedHudMessage(action : EInputActionBlock, optional isCombatLock : bool, optional isPlaceLock : bool, optional isTimeLock : bool, optional isDangerous : bool)
+ 	{
+ 		var lockType : name;
+-		if(action != EIAB_Undefined && DisallowedActionDontShowHack(action))
++		if(action != EIAB_Undefined && DisallowedActionDontShowHack(action, isTimeLock))
+ 			return;
+ 		if(IsInCombat() && !IsActionCombat(action))
+ 			isCombatLock = true;
+@@ -7933,6 +7939,7 @@
+ 		{
+ 			currentAmmo = Max(currentAmmo - ammo, 0);
+ 			inv.SetItemModifierInt(id, 'oil_charges', currentAmmo);
++			UpdateOilBuff(id);
+ 			if(currentAmmo == 0)
+ 			{
+ 				RemoveItemOil(id);
+@@ -7942,6 +7949,79 @@
+ 		}
+ 		theGame.GetGlobalEventsManager().OnScriptedEvent( SEC_OnOilApplied );
+ 	}
++	public final function HasOilBuffFromSword(sword : SItemUniqueId) : bool
++	{
++		var i : int;
++		var oil : W3Effect_Oil;
++		var oils : array<CBaseGameplayEffect>;
++		oils = GetBuffs(EET_Oil);
++		for(i=0; i<oils.Size(); i+=1)
++		{
++			oil = (W3Effect_Oil)oils[i];
++			if(oil && oil.GetSwordItemId() == sword)
++				return true;
++		}
++		return false;
++	}
++	public final function AddOilBuff(steel : bool)
++	{
++		var buffParams : SCustomEffectParams;
++		var oilParams : W3OilBuffParams;
++		var item : SItemUniqueId;
++		var oilName : name;
++		var dm : CDefinitionsManagerAccessor;
++		item = GetEquippedSword(steel);
++		if(inv.ItemHasOilApplied(item) && !HasOilBuffFromSword(item))
++		{
++			oilName = GetOilAppliedOnSword(steel);
++			dm = theGame.GetDefinitionsManager();
++			oilParams = new W3OilBuffParams in theGame;
++			oilParams.iconPath = dm.GetItemIconPath(oilName);
++			oilParams.localizedName = dm.GetItemLocalisationKeyName(oilName);
++			oilParams.localizedDescription = dm.GetItemLocalisationKeyName(oilName);
++			oilParams.sword = item;
++			oilParams.maxCount = GetMaxOilAmmo(item);
++			oilParams.currCount = GetCurrentOilAmmo(item);
++			buffParams.effectType = EET_Oil;
++			buffParams.creator = this;
++			buffParams.sourceName = "drawnSword";
++			buffParams.buffSpecificParams = oilParams;
++			AddEffectCustom(buffParams);
++			delete oilParams;
++		}
++	}
++	protected final function RemoveOilBuff(isSteel : bool)
++	{
++		var i : int;
++		var oil : W3Effect_Oil;
++		var oils : array<CBaseGameplayEffect>;
++		var item : SItemUniqueId;
++		item = GetEquippedSword(isSteel);
++		if(!inv.ItemHasOilApplied(item))
++			return;
++		oils = GetBuffs(EET_Oil);
++		for(i=0; i<oils.Size(); i+=1)
++		{
++			oil = (W3Effect_Oil)oils[i];
++			if(oil && oil.GetSwordItemId() == item)
++				RemoveEffect(oil);
++		}
++	}
++	private final function UpdateOilBuff(swordId : SItemUniqueId)
++	{
++		var i : int;
++		var oil : W3Effect_Oil;
++		var oils : array<CBaseGameplayEffect>;
++		oils = GetBuffs(EET_Oil);
++		for(i=0; i<oils.Size(); i+=1)
++		{
++			oil = (W3Effect_Oil)oils[i];
++			if(oil)
++			{
++				oil.UpdateCounter( GetCurrentOilAmmo(swordId) );
++			}
++		}
++	}
+ 	public function RemoveItemOil(id : SItemUniqueId)
+ 	{
+ 		var i : int;
+@@ -7957,8 +8037,10 @@
+ 		inv.SetItemModifierInt(id, 'oil_max_charges', -1);
+ 		sword = (CWitcherSword) inv.GetItemEntityUnsafe(id);
+ 		sword.RemoveOil( inv );
++		RemoveOilBuff(inv.IsItemSteelSwordUsableByPlayer(id));
+ 		theGame.GetGlobalEventsManager().OnScriptedEvent( SEC_OnOilApplied );
+ 	}
++	public function GetEquippedSword(steel : bool) : SItemUniqueId;
+ 	public final function HasRequiredLevelToEquipItem(item : SItemUniqueId) : bool
+ 	{
+ 		if(HasBuff(EET_WolfHour))
+diff -ur scripts_1_11_decommented/game/player/states/aimThrow.ws scripts_1_12_decommented/game/player/states/aimThrow.ws
+--- scripts_1_11_decommented/game/player/states/aimThrow.ws	2016-01-12 11:20:57.471846548 +0400
++++ scripts_1_12_decommented/game/player/states/aimThrow.ws	2016-01-12 11:21:13.574807910 +0400
+@@ -19,7 +19,7 @@
+ 		theGame.GetGameCamera().ChangePivotRotationController('AimThrow');
+ 		camera.EnableScreenSpaceCorrection( false );
+ 		OnEnterStateExtended();
+-		theTelemetry.Log(TE_STATE_AIM_THROW);
++		theTelemetry.LogWithName(TE_STATE_AIM_THROW);
+ 		SearchForTargets();
+ 		cachedHorTimeout = camera.GetManualRotationHorTimeout();
+ 		cachedVerTimeout = camera.GetManualRotationVerTimeout();
+diff -ur scripts_1_11_decommented/game/player/states/combat.ws scripts_1_12_decommented/game/player/states/combat.ws
+--- scripts_1_11_decommented/game/player/states/combat.ws	2016-01-12 11:20:57.546902300 +0400
++++ scripts_1_12_decommented/game/player/states/combat.ws	2016-01-12 11:21:13.646861431 +0400
+@@ -73,7 +73,7 @@
+ 		parent.AddTimer( 'CombatEndCheck', 0.1f, true );
+ 		parent.SetBehaviorMimicVariable( 'gameplayMimicsMode', (float)(int)PGMM_Combat );
+ 		CombatInit();
+-		theTelemetry.Log(TE_STATE_COMBAT);
++		theTelemetry.LogWithName(TE_STATE_COMBAT);
+ 		StatsInit();
+ 	}
+ 	function StatsInit()
+diff -ur scripts_1_11_decommented/game/player/states/exploration.ws scripts_1_12_decommented/game/player/states/exploration.ws
+--- scripts_1_11_decommented/game/player/states/exploration.ws	2016-01-12 11:20:57.695012317 +0400
++++ scripts_1_12_decommented/game/player/states/exploration.ws	2016-01-12 11:21:13.796972935 +0400
+@@ -20,7 +20,7 @@
+ 		}
+ 		parent.SetBehaviorMimicVariable( 'gameplayMimicsMode', (float)(int)PGMM_Default );
+ 		this.ExplorationInit( prevStateName );
+-		theTelemetry.Log(TE_STATE_EXPLORING);
++		theTelemetry.LogWithName(TE_STATE_EXPLORING);
+ 	}
+ 	event OnLeaveState( nextStateName : name )
+ 	{
+diff -ur scripts_1_11_decommented/game/player/states/playerDialogState.ws scripts_1_12_decommented/game/player/states/playerDialogState.ws
+--- scripts_1_11_decommented/game/player/states/playerDialogState.ws	2016-01-12 11:20:57.741046511 +0400
++++ scripts_1_12_decommented/game/player/states/playerDialogState.ws	2016-01-12 11:21:13.843007129 +0400
+@@ -24,7 +24,7 @@
+ 		if ( scabbardsComp )
+ 			scabbardsComp.SetBehaviorVariable( 'inScene', 1.f );
+ 		player.GetMovingAgentComponent().ResetMoveRequests();
+-		theTelemetry.Log(TE_STATE_DIALOG);
++		theTelemetry.LogWithName(TE_STATE_DIALOG);
+ 		parent.SetBehaviorMimicVariable( 'gameplayMimicsMode', (float)(int)PGMM_None );
+ 		cachedPrevStateName = prevStateName;
+ 	}
+diff -ur scripts_1_11_decommented/game/player/states/swimming.ws scripts_1_12_decommented/game/player/states/swimming.ws
+--- scripts_1_11_decommented/game/player/states/swimming.ws	2016-01-12 11:20:57.457836141 +0400
++++ scripts_1_12_decommented/game/player/states/swimming.ws	2016-01-12 11:21:13.561798246 +0400
+@@ -155,7 +155,7 @@
+ 		ResetVariables();
+ 		EnableBuffImmunities(true);
+ 		SetCapsuleToSwim( true );
+-		theTelemetry.Log(TE_STATE_SWIMMING);
++		theTelemetry.LogWithName(TE_STATE_SWIMMING);
+ 		ShouldSpawnWaterSplash(prevStateName);
+ 		if ( parent.IsRagdolled() )
+ 		{
+diff -ur scripts_1_11_decommented/game/player/states/vehicles/horseRiding.ws scripts_1_12_decommented/game/player/states/vehicles/horseRiding.ws
+--- scripts_1_11_decommented/game/player/states/vehicles/horseRiding.ws	2016-01-12 11:20:57.608948388 +0400
++++ scripts_1_12_decommented/game/player/states/vehicles/horseRiding.ws	2016-01-12 11:21:13.709908263 +0400
+@@ -25,7 +25,7 @@
+ 	event OnEnterState( prevStateName : name )
+ 	{
+ 		super.OnEnterState(prevStateName);
+-		theTelemetry.Log(TE_STATE_HORSE_RIDING);
++		theTelemetry.LogWithName(TE_STATE_HORSE_RIDING);
+ 		ChangeTicketPool( true );
+ 		scabbardsComp = (CAnimatedComponent)( parent.GetComponent( "scabbards_skeleton" ) );
+ 		scabbardsComp.SetBehaviorVariable( 'onHorse', 0.5 );
+diff -ur scripts_1_11_decommented/game/player/states/vehicles/sailing.ws scripts_1_12_decommented/game/player/states/vehicles/sailing.ws
+--- scripts_1_11_decommented/game/player/states/vehicles/sailing.ws	2016-01-12 11:20:57.630964742 +0400
++++ scripts_1_12_decommented/game/player/states/vehicles/sailing.ws	2016-01-12 11:21:13.730923873 +0400
+@@ -29,7 +29,7 @@
+ 	{
+ 		var commonMapManager : CCommonMapManager = theGame.GetCommonMapManager();
+ 		super.OnEnterState( prevStateName );
+-		theTelemetry.Log( TE_STATE_SAILING );
++		theTelemetry.LogWithName( TE_STATE_SAILING );
+ 		parent.SetBehaviorVariable( 'keepSpineUpright', 0.f );
+ 		commonMapManager.NotifyPlayerMountedBoat();
+ 		InitCamera();
+diff -ur scripts_1_11_decommented/game/quests/conditions/questItemQuantity.ws scripts_1_12_decommented/game/quests/conditions/questItemQuantity.ws
+--- scripts_1_11_decommented/game/quests/conditions/questItemQuantity.ws	2016-01-12 11:21:01.800061568 +0400
++++ scripts_1_12_decommented/game/quests/conditions/questItemQuantity.ws	2016-01-12 11:21:17.682859391 +0400
+@@ -130,7 +130,6 @@
+ 	{
+ 		var itemQuantity, i : int;
+ 		var itemID :  SItemUniqueId;
+-		var items : array< SItemUniqueId >;
+ 		var horseInv : CInventoryComponent;
+ 		var witcher : W3PlayerWitcher;
+ 		if ( isFulfilled )
+@@ -155,9 +154,8 @@
+ 			{
+ 				itemQuantity = inventory.GetAllItemsQuantity( includeHorseInventory );
+ 			}
+-			items = inventory.GetItemsIds( itemName );
+-			itemID = items[0];
+-			if ( inventory.IsItemTrophy(itemID) || itemCategory == 'trophy' || itemTag == 'Trophy' ||  itemTag == 'HorseTrophy' )
++			itemID = inventory.GetItemId( itemName );
++			if ( itemCategory == 'trophy' || itemTag == 'Trophy' ||  itemTag == 'HorseTrophy' || inventory.IsItemTrophy( itemID ) )
+ 			{
+ 				isTrophy = true;
+ 			}
+diff -ur scripts_1_11_decommented/game/quests/quest_function.ws scripts_1_12_decommented/game/quests/quest_function.ws
+--- scripts_1_11_decommented/game/quests/quest_function.ws	2016-01-12 11:21:02.282419866 +0400
++++ scripts_1_12_decommented/game/quests/quest_function.ws	2016-01-12 11:21:18.121184982 +0400
+@@ -906,7 +906,7 @@
+ 		}
+ 	}
+ }
+-quest function AddErrandsToTheNoticeBoard( boardTag : name, errandDetails : array < ErrandDetailsList > )
++quest function AddErrandsToTheNoticeBoard( boardTag : name, errandDetails : array < ErrandDetailsList >, optional forceActivate : bool )
+ {
+ 	var boards : array<CEntity>;
+ 	var board : W3NoticeBoard;
+@@ -924,7 +924,7 @@
+ 		{
+ 			for( j = 0; errandDetails.Size() > j; j += 1 )
+ 			{
+-				board.AddErrand( errandDetails[j] );
++				board.AddErrand( errandDetails[j], forceActivate );
+ 			}
+ 			board.UpdateBoard();
+ 			board.UpdateInteraction();
+@@ -4353,6 +4353,8 @@
+ 	EDM_QuestAvailableFromNonActor,
+ 	EDM_EP1QuestAvailable,
+ 	EDM_EP1QuestAvailableFromNonActor,
++	EDM_EP2QuestAvailable,
++	EDM_EP2QuestAvailableFromNonActor,
+ }
+ quest function AddQuestMappinToNoticeboard( noticeboardTag : name, entityTag : name,  entityType : AQMTN_EntityType )
+ {
+@@ -4402,6 +4404,12 @@
+ 		case EDM_EP1QuestAvailableFromNonActor:
+ 			commonMapManager.EnableDynamicMappin( tag, enable, 'QuestAvailableHoS' );
+ 			break;
++		case EDM_EP2QuestAvailable:
++			commonMapManager.EnableDynamicMappin( tag, enable, 'QuestAvailableBaW', true );
++			break;
++		case EDM_EP2QuestAvailableFromNonActor:
++			commonMapManager.EnableDynamicMappin( tag, enable, 'QuestAvailableBaW' );
++			break;
+ 		default:
+ 			break;
+ 		}
+diff -ur scripts_1_11_decommented/game/r4Game.ws scripts_1_12_decommented/game/r4Game.ws
+--- scripts_1_11_decommented/game/r4Game.ws	2016-01-12 11:21:06.638655700 +0400
++++ scripts_1_12_decommented/game/r4Game.ws	2016-01-12 11:21:22.489429736 +0400
+@@ -49,6 +49,7 @@
+ 		return uberMovement;
+ 	}
+ 		default diffChangePostponed = EDM_NotSet;
++	import final function ShowSteamControllerBindingPanel() : bool;
+ 	import final function ActivateHorseCamera( activate : bool, blendTime : float, optional instantMount : bool );
+ 	import final function GetFocusModeController() : CFocusModeController;
+ 	public var isRespawningInLastCheckpoint : bool;
+diff -ur scripts_1_11_decommented/game/replacers/ciri.ws scripts_1_12_decommented/game/replacers/ciri.ws
+--- scripts_1_11_decommented/game/replacers/ciri.ws	2016-01-12 11:21:10.659642510 +0400
++++ scripts_1_12_decommented/game/replacers/ciri.ws	2016-01-12 11:21:26.600483448 +0400
+@@ -711,7 +711,7 @@
+ 			return inv.GetSwordOil(sword);
+ 		return '';
+ 	}
+-	public final function GetEquippedSword(steel : bool) : SItemUniqueId
++	public function GetEquippedSword(steel : bool) : SItemUniqueId
+ 	{
+ 		var ids : array<SItemUniqueId>;
+ 		var i : int;
+diff -ur scripts_1_11_decommented/game/scenes/scene_functions.ws scripts_1_12_decommented/game/scenes/scene_functions.ws
+--- scripts_1_11_decommented/game/scenes/scene_functions.ws	2016-01-12 11:21:06.574608126 +0400
++++ scripts_1_12_decommented/game/scenes/scene_functions.ws	2016-01-12 11:21:22.426382905 +0400
+@@ -742,6 +742,18 @@
+ 	}
+ 	inventory = ent.GetInventory();
+ 	itemsBeforeChange = inventory.GetItemsNames();
++    for ( i = itemsBeforeChange.Size() - 1; i >= 0 ; i-=1 )
++    {
++		if( items.Contains( itemsBeforeChange[ i ] ) )
++		{
++			factId = uniqueTransactionId + "_" + itemsBeforeChange[ i ];
++			alreadyCollected = FactsQuerySum( factId ) > 0;
++			if ( !alreadyCollected )
++			{
++				itemsBeforeChange.Erase( i );
++			}
++		}
++    }
+ 	theGame.GetGuiManager().SetLastOpenedCommonMenuName( 'None' );
+ 	OpenContainer( player, collectorTag, filterTagsList);
+ 	while( theGame.GetGuiManager().GetLastOpenedCommonMenuName() == 'None' )
+diff -ur scripts_1_11_decommented/game/scenes/scenePlayer.ws scripts_1_12_decommented/game/scenes/scenePlayer.ws
+--- scripts_1_11_decommented/game/scenes/scenePlayer.ws	2016-01-12 11:21:06.587617789 +0400
++++ scripts_1_12_decommented/game/scenes/scenePlayer.ws	2016-01-12 11:21:22.439392568 +0400
+@@ -35,6 +35,7 @@
+ 		var ents : array<CGameplayEntity>;
+ 		var i : int;
+ 		var actor : CActor;
++		var hud : CR4ScriptedHud;
+ 		if ( !theGame.IsActive() )
+ 		{
+ 			return true;
+@@ -51,17 +52,37 @@
+ 			ents[i].StopCutsceneForbiddenFXs();
+ 		}
+ 		thePlayer.RemoveAllBuffsOfType(EET_Blizzard);
++		hud = (CR4ScriptedHud)theGame.GetHud();
++		if ( hud )
++		{
++			hud.OnCutsceneStarted();
++		}
+ 	}
+ 	import final function DbFactAdded( factName : string );
+ 	import final function DbFactRemoved( factName : string );
+ 	event OnBlockingSceneEnded( output : CStorySceneOutput )
+ 	{
++		var hud : CR4ScriptedHud;
++		hud = (CR4ScriptedHud)theGame.GetHud();
++		if ( hud )
++		{
++			hud.OnCutsceneEnded();
++		}
+ 		if ( !theGame.IsActive() )
+ 		{
+ 			return true;
+ 		}
+ 		theGame.SetIsDialogOrCutscenePlaying(false);
+ 	}
++	event OnCameraBlendToGameplay()
++	{
++		var hud : CR4ScriptedHud;
++		hud = (CR4ScriptedHud)theGame.GetHud();
++		if ( hud )
++		{
++			hud.OnCutsceneEnded();
++		}
++	}
+ 	event OnCustceneStarted()
+ 	{
+ 		theGame.SetIsCutscenePlaying(true);
+diff -ur scripts_1_11_decommented/game/temp.ws scripts_1_12_decommented/game/temp.ws
+--- scripts_1_11_decommented/game/temp.ws	2016-01-12 11:21:07.112007308 +0400
++++ scripts_1_12_decommented/game/temp.ws	2016-01-12 11:21:22.910742690 +0400
+@@ -4631,7 +4631,7 @@
+ 	var itemName : name;
+ 	var dm : CDefinitionsManagerAccessor;
+ 	var witcher : W3PlayerWitcher;
+-	LogItems("==== Showing inventory ====");
++	Log("==== Showing inventory ====");
+ 	dm = theGame.GetDefinitionsManager();
+ 	thePlayer.inv.GetAllItems(items);
+ 	witcher = GetWitcherPlayer();
+@@ -4642,7 +4642,7 @@
+ 		itemName = thePlayer.inv.GetItemName(items[i]);
+ 		if(onlyEquipped)
+ 		{
+-			LogItems(witcher.inv.GetItemQuantity(items[i]) + " x " + itemName + ", " + witcher.GetItemSlot(items[i]));
++			Log(witcher.inv.GetItemQuantity(items[i]) + " x " + itemName + ", " + witcher.GetItemSlot(items[i]));
+ 		}
+ 		else if(!printables.Contains(itemName))
+ 		{
+@@ -4654,10 +4654,10 @@
+ 		for(i=0; i<printables.Size(); i+=1)
+ 		{
+ 			quantity = thePlayer.inv.GetItemQuantityByName(printables[i]);
+-			LogItems(quantity + " x " + printables[i]);
++			Log(quantity + " x " + printables[i]);
+ 		}
+ 	}
+-	LogItems("");
++	Log("");
+ }
+ function PrintInventory2()
+ {
+@@ -9928,3 +9928,268 @@
+ 		FactsRemove("debug_fact_focus_boy");
+ 	}
+ }
++exec function startContentEP2(contentName : string)
++{
++	var teleportPosition 	: Vector;
++	var worldName			: String;
++	var shouldTeleport 		: Bool;
++	worldName =  theGame.GetWorld().GetDepotPath();
++	if(StrFindFirst(worldName, "bob")<0)
++	{
++		Log("temp.ws:startContentEP2: Use this command only on bob.w2w level.");
++		return;
++	}
++	shouldTeleport = true;
++	switch(contentName)
++	{
++		case 'poi_bar_a_01' :
++		{
++			teleportPosition = Vector(835, -575, 60);
++			break;
++		}
++		case 'poi_bar_a_02' :
++		{
++			teleportPosition = Vector(1035, -1194, 7);
++			break;
++		}
++		case 'poi_bar_a_03' :
++		{
++			teleportPosition = Vector(401, -1169, 3);
++			break;
++		}
++		case 'poi_bar_b_04' :
++		{
++			teleportPosition = Vector(513, -1217, 5);
++			break;
++		}
++		case 'poi_car_a_01' :
++		{
++			teleportPosition = Vector(636, -1524, 25);
++			break;
++		}
++		case 'poi_car_b_04' :
++		{
++			teleportPosition = Vector(397, -1434, 10);
++			break;
++		}
++		case 'poi_car_c_03' :
++		{
++			teleportPosition = Vector(-362, -1914, 69);
++			break;
++		}
++		case 'poi_car_a_02' :
++		{
++			teleportPosition = Vector(482, -1890, 63);
++			break;
++		}
++		case 'poi_san_a_01' :
++		{
++			teleportPosition = Vector(247, -1444, 9);
++			break;
++		}
++		case 'poi_san_b_02' :
++		{
++			teleportPosition = Vector(62, -1034, 2);
++			break;
++		}
++		case 'poi_gor_a_01' :
++		{
++			teleportPosition = Vector(-882, -1572, 83);
++			break;
++		}
++		case 'poi_gor_b_02' :
++		{
++			teleportPosition = Vector(-1047, -1201, 158);
++			break;
++		}
++		case 'poi_gor_c_04' :
++		{
++			teleportPosition = Vector(-1254, -879, 107);
++			break;
++		}
++		case 'poi_gor_d_05' :
++		{
++			teleportPosition = Vector(-1126, -29, 49);
++			break;
++		}
++		case 'poi_gor_d_06' :
++		{
++			teleportPosition = Vector(-1053, -138, 10);
++			break;
++		}
++		case 'poi_gor_d_07' :
++		{
++			teleportPosition = Vector(-1011, 227, 49);
++			break;
++		}
++		case 'poi_vin_a_01' :
++		{
++			teleportPosition = Vector(-785, -511, 37);
++			break;
++		}
++		case 'poi_vin_a_02' :
++		{
++			teleportPosition = Vector(-439, -589, 53);
++			break;
++		}
++		case 'poi_vin_b_03' :
++		{
++			teleportPosition = Vector(-203, -381, 17);
++			break;
++		}
++		case 'poi_vin_b_04' :
++		{
++			teleportPosition = Vector(134, -337, 11);
++			break;
++		}
++		case 'poi_vin_b_05' :
++		{
++			teleportPosition = Vector(41, -99, 2);
++			break;
++		}
++		case 'poi_ved_a_01' :
++		{
++			teleportPosition = Vector(-194, 310, 6);
++			break;
++		}
++		case 'poi_ved_a_02' :
++		{
++			teleportPosition = Vector(-476, 666, 4);
++			break;
++		}
++		case 'poi_ved_a_03' :
++		{
++			teleportPosition = Vector(-427, 298, 2);
++			break;
++		}
++		case 'poi_ved_b_04' :
++		{
++			teleportPosition = Vector(-218, 687, 4);
++			break;
++		}
++		case 'poi_ved_b_05' :
++		{
++			teleportPosition = Vector(-17, 510, 13);
++			break;
++		}
++		case 'poi_rav_a_01' :
++		{
++			teleportPosition = Vector(141, -582, 21);
++			break;
++		}
++		case 'poi_rav_a_02' :
++		{
++			teleportPosition = Vector(-435, -561, 22);
++			break;
++		}
++		case 'poi_rav_a_04' :
++		{
++			teleportPosition = Vector(244, -664, 3);
++			break;
++		}
++		case 'poi_rav_b_03' :
++		{
++			teleportPosition = Vector(209, -125, 19);
++			break;
++		}
++		case 'poi_myr_a_01' :
++		{
++			teleportPosition = Vector(392, 131, 5);
++			break;
++		}
++		case 'poi_myr_a_02' :
++		{
++			teleportPosition = Vector(660, 148, 4);
++			break;
++		}
++		case 'mq7001' :
++		{
++			teleportPosition = Vector(-469, -1503, 91);
++			break;
++		}
++		case 'mq7002' :
++		{
++			teleportPosition = Vector(-630, -1206, 109);
++			break;
++		}
++		case 'mq7003' :
++		{
++			teleportPosition = Vector(790, 40, 4);
++			break;
++		}
++		case 'mq7004' :
++		{
++			teleportPosition = Vector(-1304, -281, 37);
++			break;
++		}
++		case 'mq7006' :
++		{
++			teleportPosition = Vector(-948, -751, 63);
++			break;
++		}
++		case 'mq7007' :
++		{
++			teleportPosition = Vector(286, -1670, 44);
++			break;
++		}
++		case 'mq7009' :
++		{
++			teleportPosition = Vector(-496, -1394, 93);
++			break;
++		}
++		case 'mq7010' :
++		{
++			teleportPosition = Vector(674, -751, 15);
++			break;
++		}
++		case 'mq7011' :
++		{
++			teleportPosition = Vector(-519, -1416, 93);
++			break;
++		}
++		case 'mq7013' :
++		{
++			teleportPosition = Vector(-576, -1274, 106);
++			break;
++		}
++		case 'mq7015' :
++		{
++			teleportPosition = Vector(-518, -1326, 95);
++			break;
++		}
++		case 'mq7017' :
++		{
++			teleportPosition = Vector(428, -54, 11);
++			break;
++		}
++		case 'mq7018' :
++		{
++			teleportPosition = Vector(5.7, 230, 10.5);
++			break;
++		}
++		case 'mq7020' :
++		{
++			teleportPosition = Vector(-495, -1540, 91);
++			break;
++		}
++		case 'mq7021' :
++		{
++			teleportPosition = Vector(-1142, -940, 118);
++			break;
++		}
++		case 'mq7022' :
++		{
++			teleportPosition = Vector(310, -1029, 5);
++			break;
++		}
++		default:
++		{
++			shouldTeleport = false;
++			Log("temp.ws:startContentEP2: This name was not defined.");
++		}
++	}
++	if(shouldTeleport)
++	{
++		thePlayer.Teleport(teleportPosition);
++	}
++}
+diff -ur scripts_1_11_decommented/game/types.ws scripts_1_12_decommented/game/types.ws
+--- scripts_1_11_decommented/game/types.ws	2016-01-12 11:21:06.707706992 +0400
++++ scripts_1_12_decommented/game/types.ws	2016-01-12 11:21:22.555478798 +0400
+@@ -37,6 +37,10 @@
+ 	AN_Velen,
+ 	AN_CombatTestLevel,
+ }
++enum EDlcAreaName
++{
++	AN_Dlc_Bob = 11,
++}
+ function AreaNameToType( lName : string ) : EAreaName
+ {
+ 	var areaTypeInt : int;
+diff -ur scripts_1_11_decommented/game/vehicles/horse/states/exploration.ws scripts_1_12_decommented/game/vehicles/horse/states/exploration.ws
+--- scripts_1_11_decommented/game/vehicles/horse/states/exploration.ws	2016-01-12 11:21:02.913888925 +0400
++++ scripts_1_12_decommented/game/vehicles/horse/states/exploration.ws	2016-01-12 11:21:18.748651067 +0400
+@@ -237,7 +237,13 @@
+ 			}
+ 		}
+ 		else if( criticalEffect != ECST_Swarm )
++		{
+ 			parentActor.AddPanic( 100 );
++			if( !thePlayer.IsInCombat() )
++			{
++				parent.ShakeOffRider( DT_shakeOff );
++			}
++		}
+ 	}
+ 	var cachedCombatAction : EVehicleCombatAction;
+ 	event OnCombatAction( action : EVehicleCombatAction )
